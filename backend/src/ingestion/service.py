@@ -127,6 +127,44 @@ class IngestionService:
             errors.append(str(e))
             raise
 
+    def ingest_file_from_upload(self, file, facility_name: str, reporting_period: str) -> IngestionResult:
+        """Ingest file from FastAPI UploadFile"""
+        import tempfile
+        import shutil
+        
+        # Save uploaded file to temp location
+        file_ext = Path(file.filename).suffix
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_path = tmp.name
+        
+        try:
+            # Determine file type
+            file_type = file_ext.lstrip('.')
+            
+            # Ingest the file
+            result = self.ingest_file(tmp_path, file_type)
+            
+            # Move file to permanent storage
+            upload_dir = Path("data/uploads") / str(result.upload_id)
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            final_path = upload_dir / file.filename
+            shutil.move(tmp_path, final_path)
+            
+            # Update file path in database
+            upload = self.db.query(Upload).filter(Upload.id == result.upload_id).first()
+            if upload:
+                upload.file_path = str(final_path)
+                upload.metadata["facility_name"] = facility_name
+                upload.metadata["reporting_period"] = reporting_period
+                self.db.commit()
+            
+            return result
+        finally:
+            # Clean up temp file if it still exists
+            if Path(tmp_path).exists():
+                Path(tmp_path).unlink()
+
     def get_parser(self, file_type: str) -> BaseParser:
         """Factory method to get appropriate parser"""
         file_type = file_type.lower()

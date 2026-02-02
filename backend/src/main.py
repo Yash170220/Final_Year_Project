@@ -2,6 +2,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.ingestion import router as ingestion_router
+
 app = FastAPI(
     title="AI ESG Reporting System",
     description="Automated ESG reporting with AI-powered data processing",
@@ -15,6 +17,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(ingestion_router)
 
 @app.get("/")
 async def root():
