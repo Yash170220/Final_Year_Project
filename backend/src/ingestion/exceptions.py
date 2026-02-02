@@ -24,3 +24,8 @@ class EmptyFileError(ParseError):
 class MalformedCSVError(ParseError):
     """Raised when CSV has inconsistent columns"""
     pass
+
+
+class UnsupportedFileTypeError(ParseError):
+    """Raised when file type is not supported"""
+    pass

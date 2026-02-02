@@ -7,18 +7,12 @@ import chardet
 import polars as pl
 
 from src.ingestion.exceptions import EmptyFileError, MalformedCSVError, ParseError
+from src.ingestion.base_parser import BaseParser, ParsedDataFrame
 
 logger = logging.getLogger(__name__)
 
 
-class ParsedDataFrame:
-    """Container for parsed data with metadata"""
-    def __init__(self, data: pl.DataFrame, metadata: Dict[str, Any]):
-        self.data = data
-        self.metadata = metadata
-
-
-class CSVParser:
+class CSVParser(BaseParser):
     """Parser for CSV files with intelligent detection"""
 
     def parse(self, file_path: str) -> ParsedDataFrame:

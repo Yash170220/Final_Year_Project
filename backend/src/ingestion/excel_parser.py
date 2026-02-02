@@ -9,18 +9,12 @@ from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.worksheet.worksheet import Worksheet
 
 from src.ingestion.exceptions import ParseError, AuthenticationError, FileFormatError
+from src.ingestion.base_parser import BaseParser, ParsedDataFrame
 
 logger = logging.getLogger(__name__)
 
 
-class ParsedDataFrame:
-    """Container for parsed data with metadata"""
-    def __init__(self, data: pl.DataFrame, metadata: Dict[str, Any]):
-        self.data = data
-        self.metadata = metadata
-
-
-class ExcelParser:
+class ExcelParser(BaseParser):
     """Parser for Excel files with intelligent data extraction"""
 
     def parse(self, file_path: str) -> ParsedDataFrame:
