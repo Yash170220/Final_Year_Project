@@ -57,12 +57,29 @@ class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
+class MatchingConfig(BaseSettings):
+    """Matching configuration"""
+    confidence_threshold: float = Field(default=0.80, alias="MATCHING_CONFIDENCE_THRESHOLD")
+    review_threshold: float = Field(default=0.85, alias="MATCHING_REVIEW_THRESHOLD")
+    llm_threshold: float = Field(default=0.70, alias="MATCHING_LLM_THRESHOLD")
+
+    @field_validator("confidence_threshold", "review_threshold", "llm_threshold")
+    @classmethod
+    def validate_threshold(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("Threshold must be between 0.0 and 1.0")
+        return v
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+
 class Settings(BaseSettings):
     """Global settings"""
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     groq: GroqConfig = Field(default_factory=GroqConfig)
     app: AppConfig = Field(default_factory=AppConfig)
+    matching: MatchingConfig = Field(default_factory=MatchingConfig)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from src.common.database import get_db
 from src.common.models import Upload, MatchedIndicator
 from src.common.schemas import MatchingReviewRequest, ErrorResponse
-from src.matching.service import MatchingService, REVIEW_THRESHOLD
+from src.common.config import settings
+from src.matching.service import MatchingService
 from src.matching.rule_matcher import RuleBasedMatcher
 from src.matching.llm_matcher import LLMMatcher
 
@@ -18,32 +19,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/matching", tags=["matching"])
 
-# Cache matchers to avoid recreation on every request
-_rule_matcher = None
-_llm_matcher = None
-
 
 @lru_cache(maxsize=1)
 def get_rule_matcher() -> RuleBasedMatcher:
     """Get cached rule matcher instance"""
-    global _rule_matcher
-    if _rule_matcher is None:
-        _rule_matcher = RuleBasedMatcher("data/validation-rules/synonym_dictionary.json")
-    return _rule_matcher
+    return RuleBasedMatcher("data/validation-rules/synonym_dictionary.json")
 
 
 @lru_cache(maxsize=1)
 def get_llm_matcher() -> LLMMatcher:
     """Get cached LLM matcher instance"""
-    global _llm_matcher
-    if _llm_matcher is None:
-        rule_matcher = get_rule_matcher()
-        standard_indicators = [
-            data["canonical_name"]
-            for data in rule_matcher.indicators.values()
-        ]
-        _llm_matcher = LLMMatcher(standard_indicators)
-    return _llm_matcher
+    rule_matcher = get_rule_matcher()
+    standard_indicators = [
+        data["canonical_name"]
+        for data in rule_matcher.indicators.values()
+    ]
+    return LLMMatcher(standard_indicators)
 
 
 def get_matching_service(db: Session = Depends(get_db)) -> MatchingService:
@@ -163,7 +154,7 @@ async def get_matching_results(
             "matched_indicator": match.matched_indicator,
             "confidence": round(match.confidence_score, 3),
             "method": match.matching_method.value,
-            "requires_review": match.confidence_score < REVIEW_THRESHOLD,
+            "requires_review": match.confidence_score < settings.matching.review_threshold,
             "reviewed": match.reviewed,
             "notes": match.reviewer_notes
         })
@@ -345,7 +336,8 @@ async def get_matching_stats(
     "/rematch/{indicator_id}",
     status_code=status.HTTP_200_OK,
     responses={
-        404: {"model": ErrorResponse, "description": "Indicator not found"}
+        404: {"model": ErrorResponse, "description": "Indicator not found"},
+        422: {"model": ErrorResponse, "description": "Validation error"}
     },
     summary="Rematch a header",
     description="Re-run matching for a single header"
@@ -361,6 +353,12 @@ async def rematch_header(
     try:
         result = service.rematch_header(indicator_id)
         
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No match found for header"
+            )
+        
         return {
             "indicator_id": str(indicator_id),
             "original_header": result.original_header,
@@ -372,11 +370,21 @@ async def rematch_header(
         }
         
     except ValueError as e:
-        logger.warning(f"Validation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Match not found"
-        )
+        # ValueError from service means "not found"
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            logger.warning(f"Match not found: {indicator_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Match not found"
+            )
+        else:
+            # Other ValueError means validation error
+            logger.warning(f"Validation error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Validation error"
+            )
     except Exception as e:
         logger.exception(f"Error rematching: {e}")
         raise HTTPException(
