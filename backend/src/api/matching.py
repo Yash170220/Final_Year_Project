@@ -1,8 +1,8 @@
 """Matching API endpoints"""
-import json
 import logging
 from typing import Dict, List
 from uuid import UUID
+from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from src.common.database import get_db
 from src.common.models import Upload, MatchedIndicator
 from src.common.schemas import MatchingReviewRequest, ErrorResponse
-from src.matching.service import MatchingService
+from src.matching.service import MatchingService, REVIEW_THRESHOLD
 from src.matching.rule_matcher import RuleBasedMatcher
 from src.matching.llm_matcher import LLMMatcher
 
@@ -18,23 +18,39 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/matching", tags=["matching"])
 
+# Cache matchers to avoid recreation on every request
+_rule_matcher = None
+_llm_matcher = None
+
+
+@lru_cache(maxsize=1)
+def get_rule_matcher() -> RuleBasedMatcher:
+    """Get cached rule matcher instance"""
+    global _rule_matcher
+    if _rule_matcher is None:
+        _rule_matcher = RuleBasedMatcher("data/validation-rules/synonym_dictionary.json")
+    return _rule_matcher
+
+
+@lru_cache(maxsize=1)
+def get_llm_matcher() -> LLMMatcher:
+    """Get cached LLM matcher instance"""
+    global _llm_matcher
+    if _llm_matcher is None:
+        rule_matcher = get_rule_matcher()
+        standard_indicators = [
+            data["canonical_name"]
+            for data in rule_matcher.indicators.values()
+        ]
+        _llm_matcher = LLMMatcher(standard_indicators)
+    return _llm_matcher
+
 
 def get_matching_service(db: Session = Depends(get_db)) -> MatchingService:
-    """Dependency to create matching service"""
-    # Load synonym dictionary
-    rule_matcher = RuleBasedMatcher("data/validation-rules/synonym_dictionary.json")
-    
-    # Get standard indicators from dictionary
-    standard_indicators = [
-        data["canonical_name"]
-        for data in rule_matcher.indicators.values()
-    ]
-    
-    # Create LLM matcher
-    llm_matcher = LLMMatcher(standard_indicators)
-    
-    # Create service
-    return MatchingService(rule_matcher, llm_matcher, db)
+    """Dependency to create matching service with cached matchers"""
+    rule_matcher = get_rule_matcher()
+    llm_matcher = get_llm_matcher()
+    return MatchingService(rule_matcher, llm_matcher, db, actor="api")
 
 
 @router.post(
@@ -81,8 +97,8 @@ async def process_matching(
         
         # Calculate summary
         total = len(results)
-        auto_approved = sum(1 for r in results if not r.requires_review)
         needs_review = sum(1 for r in results if r.requires_review)
+        auto_approved = total - needs_review
         avg_confidence = sum(r.confidence for r in results) / total if total > 0 else 0.0
         
         return {
@@ -96,11 +112,17 @@ async def process_matching(
             "message": f"Matched {total} headers successfully"
         }
         
+    except ValueError as e:
+        logger.warning(f"Validation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Validation error"
+        )
     except Exception as e:
         logger.exception(f"Error processing matching: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing matching: {str(e)}"
+            detail="Internal server error"
         )
 
 
@@ -141,7 +163,7 @@ async def get_matching_results(
             "matched_indicator": match.matched_indicator,
             "confidence": round(match.confidence_score, 3),
             "method": match.matching_method.value,
-            "requires_review": not match.reviewed,
+            "requires_review": match.confidence_score < REVIEW_THRESHOLD,
             "reviewed": match.reviewed,
             "notes": match.reviewer_notes
         })
@@ -181,29 +203,15 @@ async def get_review_queue(
     # Get review queue
     review_items = service.get_review_queue(upload_id)
     
-    # Get sample data context (first 5 values) from metadata
-    metadata = upload.metadata or {}
-    
     results = []
     for item in review_items:
-        # Try to get sample values for this header
-        sample_values = []
-        if "column_names" in metadata:
-            try:
-                col_index = metadata["column_names"].index(item.original_header)
-                # This would need actual data - simplified for now
-                sample_values = ["Sample data not available"]
-            except (ValueError, KeyError):
-                pass
-        
         results.append({
             "indicator_id": str(item.indicator_id),
             "original_header": item.original_header,
             "matched_indicator": item.matched_indicator,
             "confidence": round(item.confidence, 3),
             "method": item.method,
-            "reasoning": item.reasoning,
-            "sample_values": sample_values
+            "reasoning": item.reasoning
         })
     
     return {
@@ -231,6 +239,17 @@ async def review_match(
     """Review and approve or correct a match"""
     logger.info(f"Reviewing match: {request.indicator_id}")
     
+    # Check existence first
+    match = db.query(MatchedIndicator).filter(
+        MatchedIndicator.id == request.indicator_id
+    ).first()
+    
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Match not found"
+        )
+    
     try:
         # Approve/correct match
         service.approve_match(
@@ -240,16 +259,8 @@ async def review_match(
             notes=request.notes
         )
         
-        # Get updated match
-        match = db.query(MatchedIndicator).filter(
-            MatchedIndicator.id == request.indicator_id
-        ).first()
-        
-        if not match:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Indicator {request.indicator_id} not found"
-            )
+        # Refresh to get updated data
+        db.refresh(match)
         
         return {
             "indicator_id": str(match.id),
@@ -262,15 +273,16 @@ async def review_match(
         }
         
     except ValueError as e:
+        logger.warning(f"Validation error: {e}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Validation error"
         )
     except Exception as e:
         logger.exception(f"Error reviewing match: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error reviewing match: {str(e)}"
+            detail="Internal server error"
         )
 
 
@@ -304,9 +316,12 @@ async def get_matching_stats(
     
     # Calculate percentages
     total = stats["total"]
+    needs_review = stats["requires_review"]
+    auto_approved = total - needs_review
+    
     if total > 0:
-        auto_approved_pct = (stats["total"] - stats["requires_review"]) / total * 100
-        needs_review_pct = stats["requires_review"] / total * 100
+        auto_approved_pct = auto_approved / total * 100
+        needs_review_pct = needs_review / total * 100
     else:
         auto_approved_pct = 0.0
         needs_review_pct = 0.0
@@ -315,9 +330,9 @@ async def get_matching_stats(
         "upload_id": str(upload_id),
         "statistics": {
             "total_headers": total,
-            "auto_approved": stats["total"] - stats["requires_review"],
+            "auto_approved": auto_approved,
             "auto_approved_pct": round(auto_approved_pct, 1),
-            "needs_review": stats["requires_review"],
+            "needs_review": needs_review,
             "needs_review_pct": round(needs_review_pct, 1),
             "reviewed": stats["reviewed"],
             "avg_confidence": round(stats["avg_confidence"], 3),
@@ -357,13 +372,14 @@ async def rematch_header(
         }
         
     except ValueError as e:
+        logger.warning(f"Validation error: {e}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
+            detail="Match not found"
         )
     except Exception as e:
         logger.exception(f"Error rematching: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error rematching: {str(e)}"
+            detail="Internal server error"
         )

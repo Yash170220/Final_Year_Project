@@ -1,16 +1,22 @@
 """Matching service orchestrating rule-based and LLM matching"""
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from src.common.models import MatchedIndicator, MatchingMethod, AuditLog, AuditAction
 from src.matching.rule_matcher import RuleBasedMatcher
 from src.matching.llm_matcher import LLMMatcher
 
 logger = logging.getLogger(__name__)
+
+# Configuration constants
+CONFIDENCE_THRESHOLD = 0.80  # Minimum confidence to accept rule-based match
+REVIEW_THRESHOLD = 0.85  # Minimum confidence to skip manual review
+LLM_THRESHOLD = 0.70  # Minimum confidence to accept LLM match
 
 
 class MatchingResult:
@@ -48,14 +54,14 @@ class MatchingService:
         self,
         rule_matcher: RuleBasedMatcher,
         llm_matcher: LLMMatcher,
-        db: Session
+        db: Session,
+        actor: str = "system"
     ):
         """Initialize matching service"""
         self.rule_matcher = rule_matcher
         self.llm_matcher = llm_matcher
         self.db = db
-        self.confidence_threshold = 0.80
-        self.review_threshold = 0.85
+        self.actor = actor
 
     def match_headers(
         self,
@@ -66,6 +72,7 @@ class MatchingService:
         logger.info(f"Matching {len(headers)} headers for upload {upload_id}")
         
         results = []
+        matched_indicators = []
         
         for header in headers:
             try:
@@ -73,9 +80,9 @@ class MatchingService:
                 result = self.get_best_match(header)
                 
                 if result:
-                    # Save to database
-                    indicator_id = self.save_match(upload_id, header, result)
-                    result.indicator_id = indicator_id
+                    # Create database object (don't commit yet)
+                    matched_indicator = self._create_match_record(upload_id, header, result)
+                    matched_indicators.append(matched_indicator)
                     results.append(result)
                     
                     logger.info(
@@ -86,16 +93,25 @@ class MatchingService:
                     logger.warning(f"No match found for header: {header}")
                     
             except Exception as e:
-                logger.error(f"Error matching header '{header}': {e}")
+                logger.error(f"Error matching header '{header}': {e}", exc_info=True)
                 continue
+        
+        # Bulk commit all matches
+        if matched_indicators:
+            self.db.add_all(matched_indicators)
+            self.db.flush()  # Get IDs without committing
+            
+            # Update result objects with IDs
+            for result, indicator in zip(results, matched_indicators):
+                result.indicator_id = indicator.id
         
         # Log audit trail
         audit = AuditLog(
             entity_id=upload_id,
             entity_type="uploads",
             action=AuditAction.UPDATED,
-            actor="system",
-            timestamp=datetime.utcnow(),
+            actor=self.actor,
+            timestamp=datetime.now(timezone.utc),
             changes={
                 "matched_headers": len(results),
                 "requires_review": sum(1 for r in results if r.requires_review)
@@ -118,14 +134,14 @@ class MatchingService:
         # Try rule-based matching first
         rule_result = self.rule_matcher.match(header)
         
-        if rule_result and rule_result.confidence >= self.confidence_threshold:
+        if rule_result and rule_result.confidence >= CONFIDENCE_THRESHOLD:
             logger.debug(f"Rule-based match accepted: {rule_result.confidence:.2f}")
             return MatchingResult(
                 original_header=header,
                 matched_indicator=rule_result.canonical_name,
                 confidence=rule_result.confidence,
                 method=rule_result.method,
-                requires_review=rule_result.confidence < self.review_threshold,
+                requires_review=rule_result.confidence < REVIEW_THRESHOLD,
                 unit=rule_result.unit,
                 category=rule_result.category
             )
@@ -134,14 +150,26 @@ class MatchingService:
         logger.debug("Rule-based match insufficient, trying LLM...")
         llm_result = self.llm_matcher.match(header)
         
-        if llm_result and llm_result.confidence >= 0.7:
+        if llm_result and llm_result.confidence >= LLM_THRESHOLD:
             logger.debug(f"LLM match accepted: {llm_result.confidence:.2f}")
+            
+            # Try to get unit/category from rule matcher if LLM matched a known indicator
+            unit = None
+            category = None
+            for indicator_data in self.rule_matcher.indicators.values():
+                if indicator_data['canonical_name'] == llm_result.canonical_name:
+                    unit = indicator_data.get('unit')
+                    category = indicator_data.get('category')
+                    break
+            
             return MatchingResult(
                 original_header=header,
                 matched_indicator=llm_result.canonical_name,
                 confidence=llm_result.confidence,
                 method=llm_result.method,
-                requires_review=llm_result.confidence < self.review_threshold,
+                requires_review=llm_result.confidence < REVIEW_THRESHOLD,
+                unit=unit,
+                category=category,
                 reasoning=llm_result.reasoning
             )
         
@@ -149,27 +177,28 @@ class MatchingService:
         logger.debug(f"No sufficient match found for: {header}")
         return None
 
-    def save_match(
+    def _create_match_record(
         self,
         upload_id: UUID,
         header: str,
         result: MatchingResult
-    ) -> UUID:
-        """Save match result to database"""
-        logger.debug(f"Saving match: {header} → {result.matched_indicator}")
-        
+    ) -> MatchedIndicator:
+        """Create match record (without committing)"""
         # Determine matching method enum
-        if result.method == "exact":
-            method = MatchingMethod.RULE
-        elif result.method == "fuzzy":
-            method = MatchingMethod.RULE
-        elif result.method == "llm":
-            method = MatchingMethod.LLM
-        else:
+        method_map = {
+            "exact": MatchingMethod.RULE,
+            "fuzzy": MatchingMethod.RULE,
+            "llm": MatchingMethod.LLM,
+            "manual": MatchingMethod.MANUAL
+        }
+        method = method_map.get(result.method)
+        
+        if method is None:
+            logger.warning(f"Unknown matching method '{result.method}', using MANUAL")
             method = MatchingMethod.MANUAL
         
         # Create matched indicator record
-        matched_indicator = MatchedIndicator(
+        return MatchedIndicator(
             upload_id=upload_id,
             original_header=header,
             matched_indicator=result.matched_indicator,
@@ -178,6 +207,17 @@ class MatchingService:
             reviewed=not result.requires_review,
             reviewer_notes=result.reasoning if result.reasoning else None
         )
+    
+    def save_match(
+        self,
+        upload_id: UUID,
+        header: str,
+        result: MatchingResult
+    ) -> UUID:
+        """Save match result to database (legacy method for compatibility)"""
+        logger.debug(f"Saving match: {header} → {result.matched_indicator}")
+        
+        matched_indicator = self._create_match_record(upload_id, header, result)
         
         self.db.add(matched_indicator)
         self.db.commit()
@@ -237,6 +277,10 @@ class MatchingService:
         if not match:
             raise ValueError(f"Match {indicator_id} not found")
         
+        # Validate: if not approved, must provide correction
+        if not approved and not corrected_match:
+            raise ValueError("Must provide corrected_match when rejecting a match")
+        
         # Store original for audit
         original_match = match.matched_indicator
         
@@ -255,8 +299,8 @@ class MatchingService:
             entity_id=indicator_id,
             entity_type="matched_indicators",
             action=AuditAction.REVIEWED,
-            actor="user",
-            timestamp=datetime.utcnow(),
+            actor=self.actor,
+            timestamp=datetime.now(timezone.utc),
             changes={
                 "approved": approved,
                 "original_match": original_match,
@@ -271,12 +315,13 @@ class MatchingService:
         logger.info(f"Match {indicator_id} reviewed successfully")
 
     def get_matching_stats(self, upload_id: UUID) -> dict:
-        """Get matching statistics for an upload"""
-        matches = self.db.query(MatchedIndicator).filter(
+        """Get matching statistics for an upload using database aggregation"""
+        # Use database aggregation for efficiency
+        total = self.db.query(func.count(MatchedIndicator.id)).filter(
             MatchedIndicator.upload_id == upload_id
-        ).all()
+        ).scalar()
         
-        if not matches:
+        if not total:
             return {
                 "total": 0,
                 "reviewed": 0,
@@ -285,22 +330,34 @@ class MatchingService:
                 "by_method": {}
             }
         
-        stats = {
-            "total": len(matches),
-            "reviewed": sum(1 for m in matches if m.reviewed),
-            "requires_review": sum(1 for m in matches if not m.reviewed),
-            "avg_confidence": sum(m.confidence_score for m in matches) / len(matches),
-            "by_method": {}
+        reviewed = self.db.query(func.count(MatchedIndicator.id)).filter(
+            MatchedIndicator.upload_id == upload_id,
+            MatchedIndicator.reviewed == True
+        ).scalar()
+        
+        avg_confidence = self.db.query(func.avg(MatchedIndicator.confidence_score)).filter(
+            MatchedIndicator.upload_id == upload_id
+        ).scalar()
+        
+        # Get method counts
+        method_counts = self.db.query(
+            MatchedIndicator.matching_method,
+            func.count(MatchedIndicator.id)
+        ).filter(
+            MatchedIndicator.upload_id == upload_id
+        ).group_by(MatchedIndicator.matching_method).all()
+        
+        by_method = {method.value: count for method, count in method_counts}
+        
+        return {
+            "total": total,
+            "reviewed": reviewed,
+            "requires_review": total - reviewed,
+            "avg_confidence": float(avg_confidence) if avg_confidence else 0.0,
+            "by_method": by_method
         }
-        
-        # Count by method
-        for match in matches:
-            method = match.matching_method.value
-            stats["by_method"][method] = stats["by_method"].get(method, 0) + 1
-        
-        return stats
 
-    def rematch_header(self, indicator_id: UUID) -> MatchingResult:
+    def rematch_header(self, indicator_id: UUID) -> Optional[MatchingResult]:
         """Rematch a single header (useful after corrections)"""
         match = self.db.query(MatchedIndicator).filter(
             MatchedIndicator.id == indicator_id
@@ -313,12 +370,19 @@ class MatchingService:
         result = self.get_best_match(match.original_header)
         
         if result:
+            # Determine matching method enum
+            method_map = {
+                "exact": MatchingMethod.RULE,
+                "fuzzy": MatchingMethod.RULE,
+                "llm": MatchingMethod.LLM,
+                "manual": MatchingMethod.MANUAL
+            }
+            method = method_map.get(result.method, MatchingMethod.MANUAL)
+            
             # Update existing record
             match.matched_indicator = result.matched_indicator
             match.confidence_score = result.confidence
-            match.matching_method = (
-                MatchingMethod.LLM if result.method == "llm" else MatchingMethod.RULE
-            )
+            match.matching_method = method
             match.reviewed = not result.requires_review
             
             self.db.commit()
