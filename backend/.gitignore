@@ -24,8 +24,8 @@ wheels/
 venv/
 env/
 ENV/
-.venv
-myenv
+.venv/
+myenv/
 
 # IDE
 .vscode/
@@ -37,13 +37,13 @@ myenv
 # Environment
 .env
 .env.local
-.env.example
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
 *.cover
+.tox/
 
 # Database
 *.db
@@ -56,17 +56,16 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Data
-data/sample-inputs/*
-!data/sample-inputs/.gitkeep
-data/uploads/
-docker-compose.yml
-pyproject.toml
-requirements.txt
-README.md
-alembic.ini
-tests
-alembic
-data
-docker-installer-error-lpb9kpe.log
+# Uploads (runtime data only)
+data/uploads/*
+!data/uploads/.gitkeep
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~.nib
+
+# Docker
+docker-installer-error-*.log
 
