@@ -22,6 +22,11 @@ class InvalidValueError(Exception):
     pass
 
 
+class ConversionDataError(Exception):
+    """Raised when conversion data file cannot be loaded or is invalid."""
+    pass
+
+
 @dataclass
 class ConversionFactor:
     """Conversion factor with metadata."""
@@ -56,9 +61,26 @@ class UnitNormalizer:
         self._build_unit_lookup()
 
     def _load_conversion_factors(self) -> None:
-        """Load conversion factors from JSON file."""
-        with open(self.conversion_factors_path, 'r', encoding='utf-8') as f:
-            self.conversion_data = json.load(f)
+        """Load conversion factors from JSON file.
+        
+        Raises:
+            ConversionDataError: If file cannot be loaded or parsed
+        """
+        try:
+            with open(self.conversion_factors_path, 'r', encoding='utf-8') as f:
+                self.conversion_data = json.load(f)
+        except FileNotFoundError as e:
+            raise ConversionDataError(
+                f"Conversion factors file not found: {self.conversion_factors_path}"
+            ) from e
+        except json.JSONDecodeError as e:
+            raise ConversionDataError(
+                f"Invalid JSON in conversion factors file: {e}"
+            ) from e
+        except Exception as e:
+            raise ConversionDataError(
+                f"Error loading conversion factors: {e}"
+            ) from e
 
     def _build_unit_lookup(self) -> None:
         """Build reverse lookup: unit -> (category, base_unit)."""
@@ -102,8 +124,10 @@ class UnitNormalizer:
                 raise UnitNotFoundError(f"Category '{category}' not in database")
             base_unit = self.conversion_data[category]['base_unit']
 
-        # Validate value
-        if value < 0 and category in ['energy', 'mass', 'volume', 'emissions', 'area', 'power']:
+        # Validate value (check if category requires non-negative values)
+        # Dynamically determine from conversion data instead of hardcoded list
+        non_negative_categories = {'energy', 'mass', 'volume', 'emissions', 'area', 'power', 'pressure'}
+        if value < 0 and category in non_negative_categories:
             raise InvalidValueError(f"Negative value for absolute measure: {value} {from_unit}")
 
         # If already in base unit, return as-is
@@ -166,8 +190,8 @@ class UnitNormalizer:
         for unit in sorted_units:
             # Escape special regex characters in unit
             escaped_unit = re.escape(unit)
-            # Match unit with word boundaries or at end of string
-            pattern = rf'\b{escaped_unit}\b|\b{escaped_unit}$|{escaped_unit}$'
+            # Match unit at word boundary or end of string
+            pattern = rf'\b{escaped_unit}(?:\b|$)'
             if re.search(pattern, text, re.IGNORECASE):
                 category, _ = self.unit_lookup[unit]
                 return (unit, category)
@@ -290,10 +314,13 @@ class UnitNormalizer:
             
         Returns:
             Dictionary mapping categories to lists of supported units
+            
+        Raises:
+            UnitNotFoundError: If specified category not found
         """
         if category:
             if category not in self.conversion_data:
-                return {}
+                raise UnitNotFoundError(f"Category '{category}' not in database")
             return {
                 category: [
                     self.conversion_data[category]['base_unit']

@@ -10,6 +10,7 @@ from src.normalization import (
     UnitNotFoundError,
     CategoryMismatchError,
     InvalidValueError,
+    ConversionDataError,
 )
 
 
@@ -257,7 +258,7 @@ class TestUtilityMethods:
         """Test getting base unit for category."""
         assert normalizer.get_base_unit("energy") == "MWh"
         assert normalizer.get_base_unit("mass") == "tonnes"
-        assert normalizer.get_base_unit("volume") == "m³"
+        assert normalizer.get_base_unit("volume") == "m3"
 
     def test_get_base_unit_unknown_category(self, normalizer):
         """Test getting base unit for unknown category."""
@@ -283,9 +284,9 @@ class TestUtilityMethods:
         assert "kWh" in units["energy"]
 
     def test_get_supported_units_unknown_category(self, normalizer):
-        """Test getting supported units for unknown category."""
-        units = normalizer.get_supported_units("unknown")
-        assert units == {}
+        """Test getting supported units for unknown category raises exception."""
+        with pytest.raises(UnitNotFoundError, match="Category .* not in database"):
+            normalizer.get_supported_units("unknown")
 
 
 class TestEdgeCases:
@@ -313,3 +314,19 @@ class TestEdgeCases:
         """Test conversion maintains precision."""
         result = normalizer.normalize(1234.5678, "kWh", "energy")
         assert result.normalized_value == pytest.approx(1.2345678, rel=1e-6)
+
+
+class TestFileErrors:
+    """Test file loading error handling."""
+
+    def test_missing_file(self):
+        """Test error when conversion factors file is missing."""
+        with pytest.raises(ConversionDataError, match="file not found"):
+            UnitNormalizer("nonexistent.json")
+
+    def test_invalid_json(self, tmp_path):
+        """Test error when conversion factors file has invalid JSON."""
+        invalid_file = tmp_path / "invalid.json"
+        invalid_file.write_text("{invalid json}")
+        with pytest.raises(ConversionDataError, match="Invalid JSON"):
+            UnitNormalizer(str(invalid_file))

@@ -7,6 +7,7 @@ from .normalizer import (
     UnitNotFoundError,
     CategoryMismatchError,
     InvalidValueError,
+    ConversionDataError,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     'UnitNotFoundError',
     'CategoryMismatchError',
     'InvalidValueError',
+    'ConversionDataError',
 ]
