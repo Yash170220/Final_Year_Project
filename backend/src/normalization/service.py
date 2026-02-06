@@ -110,6 +110,7 @@ class NormalizationService:
             for indicator in matched_indicators:
                 indicator_total = 0
                 indicator_success = 0
+                column_data = []
                 
                 try:
                     # Get column data
@@ -152,9 +153,13 @@ class NormalizationService:
                     # Rollback this indicator's transaction
                     self.db.rollback()
                     
-                    # Update failure count
-                    failed_normalization += indicator_total
-                    total_records += indicator_total
+                    # Update failure count - use indicator_total if set, otherwise estimate from column_data
+                    if indicator_total > 0:
+                        failed_normalization += indicator_total
+                    elif column_data:
+                        failed_normalization += len([v for v in column_data if isinstance(v, (int, float)) and v is not None])
+                    
+                    total_records += indicator_total if indicator_total > 0 else len(column_data) if column_data else 0
 
             # Create audit log
             self._create_audit_log(

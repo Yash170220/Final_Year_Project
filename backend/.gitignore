@@ -59,13 +59,11 @@ Thumbs.db
 # Uploads (runtime data only)
 data/uploads/*
 !data/uploads/.gitkeep
-
+api-normalization.md
 # Temporary files
 *.tmp
 *.bak
-
 *~.nib
 
 # Docker
 docker-installer-error-*.log
-api-normalization.md
