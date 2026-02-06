@@ -48,6 +48,7 @@ class AuditAction(str, enum.Enum):
     UPDATED = "updated"
     DELETED = "deleted"
     REVIEWED = "reviewed"
+    NORMALIZE = "normalize"
 
 
 class Upload(Base):

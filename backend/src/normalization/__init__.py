@@ -9,6 +9,12 @@ from .normalizer import (
     InvalidValueError,
     ConversionDataError,
 )
+from .service import (
+    NormalizationService,
+    NormalizationSummary,
+    NormalizedRecord,
+    NormalizationError,
+)
 
 __all__ = [
     'UnitNormalizer',
@@ -18,4 +24,8 @@ __all__ = [
     'CategoryMismatchError',
     'InvalidValueError',
     'ConversionDataError',
+    'NormalizationService',
+    'NormalizationSummary',
+    'NormalizedRecord',
+    'NormalizationError',
 ]
