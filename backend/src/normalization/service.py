@@ -1,5 +1,6 @@
 """Normalization service for ESG data."""
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,6 +18,8 @@ from src.common.models import (
     AuditAction,
 )
 from src.normalization.normalizer import UnitNormalizer, UnitNotFoundError
+
+logger = logging.getLogger(__name__)
 
 
 class NormalizationError(Exception):
@@ -102,47 +105,68 @@ class NormalizationService:
         conversions_applied = {}
         errors = []
 
-        # Process each matched indicator
-        for indicator in matched_indicators:
-            try:
-                # Get column data
-                if indicator.matched_header not in data_df.columns:
-                    errors.append(f"Column '{indicator.matched_header}' not found in data")
-                    continue
-
-                column_data = data_df[indicator.matched_header].to_list()
+        try:
+            # Process each matched indicator
+            for indicator in matched_indicators:
+                indicator_total = 0
+                indicator_success = 0
                 
-                # Process indicator
-                records = self.process_indicator(
-                    indicator.id,
-                    indicator.matched_header,
-                    indicator.canonical_indicator,
-                    column_data
-                )
+                try:
+                    # Get column data
+                    if indicator.matched_header not in data_df.columns:
+                        error_msg = f"Column '{indicator.matched_header}' not found in data"
+                        errors.append(error_msg)
+                        logger.warning(error_msg)
+                        continue
 
-                # Save records
-                if records:
-                    self.save_normalized_data(records)
-                    successfully_normalized += len(records)
+                    column_data = data_df[indicator.matched_header].to_list()
+                    indicator_total = len([v for v in column_data if isinstance(v, (int, float)) and v is not None])
                     
-                    # Track statistics
-                    for record in records:
-                        unique_units.add(record.original_unit)
-                        conversion_key = f"{record.original_unit}→{record.normalized_unit}"
-                        conversions_applied[conversion_key] = conversions_applied.get(conversion_key, 0) + 1
-                
-                total_records += len(column_data)
+                    # Process indicator
+                    records = self.process_indicator(
+                        indicator.id,
+                        indicator.matched_header,
+                        indicator.canonical_indicator,
+                        column_data
+                    )
 
-            except Exception as e:
-                error_msg = f"Error processing {indicator.matched_header}: {str(e)}"
-                errors.append(error_msg)
-                failed_normalization += len(column_data) if column_data else 0
+                    # Save records in transaction
+                    if records:
+                        self.save_normalized_data(records)
+                        indicator_success = len(records)
+                        
+                        # Track statistics
+                        for record in records:
+                            unique_units.add(record.original_unit)
+                            conversion_key = f"{record.original_unit}->{record.normalized_unit}"
+                            conversions_applied[conversion_key] = conversions_applied.get(conversion_key, 0) + 1
+                    
+                    successfully_normalized += indicator_success
+                    total_records += indicator_total
 
-        # Create audit log
-        self._create_audit_log(
-            upload_id,
-            f"Normalized {successfully_normalized}/{total_records} records"
-        )
+                except Exception as e:
+                    error_msg = f"Error processing {indicator.matched_header}: {str(e)}"
+                    errors.append(error_msg)
+                    logger.error(error_msg, exc_info=True)
+                    
+                    # Rollback this indicator's transaction
+                    self.db.rollback()
+                    
+                    # Update failure count
+                    failed_normalization += indicator_total
+                    total_records += indicator_total
+
+            # Create audit log
+            self._create_audit_log(
+                upload_id,
+                f"Normalized {successfully_normalized}/{total_records} records"
+            )
+
+        except Exception as e:
+            # Rollback entire transaction on critical failure
+            self.db.rollback()
+            logger.error(f"Critical error during normalization: {str(e)}", exc_info=True)
+            raise NormalizationError(f"Normalization failed: {str(e)}") from e
 
         return NormalizationSummary(
             total_records=total_records,
@@ -211,7 +235,8 @@ class NormalizationService:
                 records.append(record)
 
             except Exception as e:
-                # Skip individual value errors but continue processing
+                # Log individual value errors but continue processing
+                logger.debug(f"Failed to normalize value {value} at index {idx}: {str(e)}")
                 continue
 
         return records
@@ -306,10 +331,13 @@ class NormalizationService:
         return None
 
     def save_normalized_data(self, records: List[NormalizedRecord]) -> None:
-        """Save normalized records to database.
+        """Save normalized records to database with transaction.
         
         Args:
             records: List of NormalizedRecord objects
+            
+        Raises:
+            Exception: If database operation fails (caller should rollback)
         """
         db_records = []
         for record in records:
@@ -325,9 +353,14 @@ class NormalizationService:
             )
             db_records.append(db_record)
 
-        # Bulk insert
-        self.db.bulk_save_objects(db_records)
-        self.db.commit()
+        # Bulk insert with explicit transaction
+        try:
+            self.db.bulk_save_objects(db_records)
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to save normalized data: {str(e)}", exc_info=True)
+            raise
 
     def get_normalized_data(
         self,
@@ -343,9 +376,13 @@ class NormalizationService:
         Returns:
             Polars DataFrame with normalized data
         """
+        # Use joinedload to avoid N+1 queries
+        from sqlalchemy.orm import joinedload
+        
         query = (
             self.db.query(NormalizedData)
             .join(MatchedIndicator)
+            .options(joinedload(NormalizedData.matched_indicator))
             .filter(MatchedIndicator.upload_id == upload_id)
         )
 
@@ -357,7 +394,7 @@ class NormalizationService:
         if not records:
             return pl.DataFrame()
 
-        # Convert to DataFrame
+        # Convert to DataFrame - data already loaded via joinedload
         data = {
             'indicator': [r.matched_indicator.canonical_indicator for r in records],
             'original_value': [r.original_value for r in records],
@@ -411,12 +448,17 @@ class NormalizationService:
             upload_id: Upload UUID
             message: Audit message
         """
-        audit = AuditLog(
-            upload_id=upload_id,
-            action=AuditAction.NORMALIZE,
-            actor="system",
-            details={"message": message},
-            timestamp=datetime.now(timezone.utc)
-        )
-        self.db.add(audit)
-        self.db.commit()
+        try:
+            audit = AuditLog(
+                upload_id=upload_id,
+                action=AuditAction.NORMALIZE,
+                actor="system",
+                details={"message": message},
+                timestamp=datetime.now(timezone.utc)
+            )
+            self.db.add(audit)
+            self.db.commit()
+        except Exception as e:
+            logger.error(f"Failed to create audit log: {str(e)}", exc_info=True)
+            self.db.rollback()
+            # Don't raise - audit log failure shouldn't break normalization

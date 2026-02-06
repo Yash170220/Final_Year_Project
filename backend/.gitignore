@@ -63,9 +63,9 @@ data/uploads/*
 # Temporary files
 *.tmp
 *.bak
-*.swp
+
 *~.nib
 
 # Docker
 docker-installer-error-*.log
-
+api-normalization.md

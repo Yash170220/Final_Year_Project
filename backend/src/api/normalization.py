@@ -297,7 +297,7 @@ def get_normalization_summary(
         
         conversion_counts = {}
         for orig, norm in conversions:
-            key = f"{orig}→{norm}"
+            key = f"{orig}->{norm}"
             conversion_counts[key] = conversion_counts.get(key, 0) + 1
         
         return {
