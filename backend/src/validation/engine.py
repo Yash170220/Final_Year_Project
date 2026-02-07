@@ -175,6 +175,9 @@ class ValidationEngine:
             return self.null_check(record, rule)
         elif validation_type == "precision_check":
             return self.precision_check(record.value, rule, record.id)
+        elif validation_type == "cross_field":
+            # Cross-field validations handled separately in validate_cross_field_consistency
+            return None
         else:
             # Unknown validation type
             return None
@@ -482,13 +485,409 @@ class ValidationEngine:
         
         return None
     
+    def validate_cross_field_consistency(
+        self, 
+        records: List[NormalizedRecord]
+    ) -> List[ValidationResult]:
+        """
+        Check relationships between indicators (cross-field validation)
+        
+        Examples:
+        - Scope 1 + Scope 2 + Scope 3 ≈ Total Emissions
+        - Energy sources sum to total energy
+        - Waste generated ≤ Raw materials consumed
+        
+        Args:
+            records: List of normalized records to validate relationships
+        
+        Returns:
+            List of validation results for failed cross-field checks
+        """
+        results: List[ValidationResult] = []
+        
+        # Group records by indicator for easier lookup
+        records_by_indicator: Dict[str, NormalizedRecord] = {}
+        for record in records:
+            records_by_indicator[record.indicator.lower().replace(" ", "_")] = record
+        
+        # Get cross-field rules
+        cross_field_rules = self.rules.get("cross_field", {})
+        
+        for rule in cross_field_rules.values():
+            relationship = rule.parameters.get("relationship")
+            
+            if relationship == "sum":
+                result = self._validate_sum_relationship(records_by_indicator, rule)
+                if result:
+                    results.append(result)
+            
+            elif relationship == "subset":
+                result = self._validate_subset_relationship(records_by_indicator, rule)
+                if result:
+                    results.append(result)
+            
+            elif relationship == "correlation":
+                result = self._validate_correlation_relationship(records_by_indicator, rule)
+                if result:
+                    results.append(result)
+        
+        return results
+    
+    def _validate_sum_relationship(
+        self,
+        records_by_indicator: Dict[str, NormalizedRecord],
+        rule: ValidationRule
+    ) -> Optional[ValidationResult]:
+        """Validate that sum of component fields equals total field"""
+        fields = rule.parameters.get("fields", [])
+        tolerance = rule.parameters.get("tolerance", 0.02)
+        
+        if len(fields) < 2:
+            return None
+        
+        # Last field is typically the total
+        component_fields = [f.lower().replace(" ", "_") for f in fields[:-1]]
+        total_field = fields[-1].lower().replace(" ", "_")
+        
+        # Get values
+        component_values = []
+        component_sum = 0.0
+        data_id = None
+        
+        for field in component_fields:
+            if field in records_by_indicator:
+                record = records_by_indicator[field]
+                component_values.append((field, record.value))
+                component_sum += record.value
+                if data_id is None:
+                    data_id = record.id
+        
+        if total_field not in records_by_indicator:
+            return None
+        
+        total_record = records_by_indicator[total_field]
+        total_value = total_record.value
+        
+        # Check if sum matches total within tolerance
+        if total_value == 0:
+            diff_pct = abs(component_sum) / 1.0
+        else:
+            diff_pct = abs(component_sum - total_value) / total_value
+        
+        if diff_pct > tolerance:
+            return ValidationResult(
+                data_id=data_id or total_record.id,
+                rule_name=rule.rule_name,
+                is_valid=False,
+                severity=rule.severity,
+                message=(
+                    f"{rule.error_message} Sum of components ({component_sum:.2f}) "
+                    f"differs from total ({total_value:.2f}) by {diff_pct*100:.1f}% "
+                    f"(tolerance: {tolerance*100:.1f}%)"
+                ),
+                citation=rule.citation,
+                suggested_fixes=rule.suggested_fixes,
+                actual_value=component_sum,
+                expected_range=(
+                    total_value * (1 - tolerance),
+                    total_value * (1 + tolerance)
+                )
+            )
+        
+        return None
+    
+    def _validate_subset_relationship(
+        self,
+        records_by_indicator: Dict[str, NormalizedRecord],
+        rule: ValidationRule
+    ) -> Optional[ValidationResult]:
+        """Validate that subset fields do not exceed superset field"""
+        fields = rule.parameters.get("fields", [])
+        tolerance = rule.parameters.get("tolerance", 0.0)
+        
+        if len(fields) < 2:
+            return None
+        
+        # Last field is typically the superset
+        subset_fields = [f.lower().replace(" ", "_") for f in fields[:-1]]
+        superset_field = fields[-1].lower().replace(" ", "_")
+        
+        if superset_field not in records_by_indicator:
+            return None
+        
+        superset_record = records_by_indicator[superset_field]
+        superset_value = superset_record.value
+        
+        # Check each subset field
+        for field in subset_fields:
+            if field in records_by_indicator:
+                subset_record = records_by_indicator[field]
+                subset_value = subset_record.value
+                
+                # Check if subset exceeds superset (with tolerance)
+                if subset_value > superset_value * (1 + tolerance):
+                    return ValidationResult(
+                        data_id=subset_record.id,
+                        rule_name=rule.rule_name,
+                        is_valid=False,
+                        severity=rule.severity,
+                        message=(
+                            f"{rule.error_message} {field} ({subset_value:.2f}) "
+                            f"exceeds {superset_field} ({superset_value:.2f})"
+                        ),
+                        citation=rule.citation,
+                        suggested_fixes=rule.suggested_fixes,
+                        actual_value=subset_value,
+                        expected_range=(0, superset_value)
+                    )
+        
+        return None
+    
+    def _validate_correlation_relationship(
+        self,
+        records_by_indicator: Dict[str, NormalizedRecord],
+        rule: ValidationRule
+    ) -> Optional[ValidationResult]:
+        """Validate correlation between fields (e.g., energy vs production)"""
+        fields = rule.parameters.get("fields", [])
+        
+        if len(fields) < 2:
+            return None
+        
+        field1 = fields[0].lower().replace(" ", "_")
+        field2 = fields[1].lower().replace(" ", "_")
+        
+        if field1 not in records_by_indicator or field2 not in records_by_indicator:
+            return None
+        
+        record1 = records_by_indicator[field1]
+        record2 = records_by_indicator[field2]
+        
+        value1 = record1.value
+        value2 = record2.value
+        
+        # Calculate intensity ratio
+        if value2 == 0:
+            return None
+        
+        intensity = value1 / value2
+        
+        # Check if intensity is within expected range
+        intensity_range = rule.parameters.get("intensity_range")
+        if intensity_range:
+            min_intensity = intensity_range.get("min", 0)
+            max_intensity = intensity_range.get("max", float('inf'))
+            
+            if intensity < min_intensity or intensity > max_intensity:
+                return ValidationResult(
+                    data_id=record1.id,
+                    rule_name=rule.rule_name,
+                    is_valid=False,
+                    severity=rule.severity,
+                    message=(
+                        f"{rule.error_message} Intensity ratio {field1}/{field2} = {intensity:.2f} "
+                        f"is outside expected range ({min_intensity}-{max_intensity})"
+                    ),
+                    citation=rule.citation,
+                    suggested_fixes=rule.suggested_fixes,
+                    actual_value=intensity,
+                    expected_range=(min_intensity, max_intensity)
+                )
+        
+        return None
+    
+    def validate_scope_totals(
+        self,
+        scope_1: float,
+        scope_2: float,
+        scope_3: Optional[float],
+        total: float,
+        tolerance: float = 0.02
+    ) -> Optional[ValidationResult]:
+        """
+        Validate that sum of scopes equals total emissions
+        
+        Args:
+            scope_1: Scope 1 emissions
+            scope_2: Scope 2 emissions
+            scope_3: Scope 3 emissions (optional)
+            total: Total emissions
+            tolerance: Acceptable percentage difference (default 2%)
+        
+        Returns:
+            ValidationResult if validation fails, None if passes
+        """
+        # Calculate sum of scopes
+        scope_sum = scope_1 + scope_2
+        if scope_3 is not None:
+            scope_sum += scope_3
+        
+        # Check if sum matches total within tolerance
+        if total == 0:
+            diff_pct = abs(scope_sum) / 1.0
+        else:
+            diff_pct = abs(scope_sum - total) / total
+        
+        if diff_pct > tolerance:
+            scopes_str = f"Scope 1 ({scope_1:.2f}) + Scope 2 ({scope_2:.2f})"
+            if scope_3 is not None:
+                scopes_str += f" + Scope 3 ({scope_3:.2f})"
+            
+            return ValidationResult(
+                data_id=uuid4(),  # Generic ID for cross-field validation
+                rule_name="scope_totals_consistency",
+                is_valid=False,
+                severity="error",
+                message=(
+                    f"Sum of scopes ({scope_sum:.2f}) differs from total ({total:.2f}) "
+                    f"by {diff_pct*100:.1f}% (tolerance: {tolerance*100:.1f}%). "
+                    f"{scopes_str} ≠ Total ({total:.2f})"
+                ),
+                citation="GHG Protocol - Corporate Accounting and Reporting Standard",
+                suggested_fixes=[
+                    "Verify all scope emissions are included in total",
+                    "Check for double-counting across scopes",
+                    "Review calculation methodology for total emissions"
+                ],
+                actual_value=scope_sum,
+                expected_range=(total * (1 - tolerance), total * (1 + tolerance))
+            )
+        
+        return None
+    
+    def validate_energy_balance(
+        self,
+        electricity: float,
+        fuel: float,
+        steam: float,
+        total_energy: float,
+        tolerance: float = 0.05
+    ) -> Optional[ValidationResult]:
+        """
+        Validate that energy sources sum to total energy
+        
+        Args:
+            electricity: Electricity consumption
+            fuel: Fuel consumption
+            steam: Steam consumption
+            total_energy: Total energy consumption
+            tolerance: Acceptable percentage difference (default 5% for conversion losses)
+        
+        Returns:
+            ValidationResult if validation fails, None if passes
+        """
+        energy_sum = electricity + fuel + steam
+        
+        if total_energy == 0:
+            diff_pct = abs(energy_sum) / 1.0
+        else:
+            diff_pct = abs(energy_sum - total_energy) / total_energy
+        
+        if diff_pct > tolerance:
+            return ValidationResult(
+                data_id=uuid4(),
+                rule_name="energy_balance_validation",
+                is_valid=False,
+                severity="warning",
+                message=(
+                    f"Energy sources (Electricity: {electricity:.2f} + Fuel: {fuel:.2f} + "
+                    f"Steam: {steam:.2f} = {energy_sum:.2f}) differ from total "
+                    f"({total_energy:.2f}) by {diff_pct*100:.1f}% (tolerance: {tolerance*100:.1f}%)"
+                ),
+                citation="ISO 50001 - Energy Management Systems",
+                suggested_fixes=[
+                    "Verify all energy sources are included",
+                    "Check unit conversions (MWh, GJ, therms)",
+                    "Account for energy conversion losses",
+                    "Review metering and measurement accuracy"
+                ],
+                actual_value=energy_sum,
+                expected_range=(total_energy * (1 - tolerance), total_energy * (1 + tolerance))
+            )
+        
+        return None
+    
+    def validate_production_correlation(
+        self,
+        energy: float,
+        emissions: float,
+        production: float
+    ) -> Optional[ValidationResult]:
+        """
+        Validate that intensity ratios are reasonable
+        
+        Check for anomalies like high energy but low emissions (unlikely unless
+        heavily renewable) or high emissions with low energy (emission factor error).
+        
+        Args:
+            energy: Energy consumption
+            emissions: GHG emissions
+            production: Production volume
+        
+        Returns:
+            ValidationResult if anomaly detected, None if reasonable
+        """
+        if production == 0 or energy == 0:
+            return None
+        
+        energy_intensity = energy / production
+        emission_intensity = emissions / production
+        
+        # Calculate emission factor (emissions per unit energy)
+        emission_factor = emissions / energy if energy > 0 else 0
+        
+        # Flag anomalies:
+        # 1. Very low emission factor (<0.1 kg CO2/GJ) - unless 100% renewable
+        # 2. Very high emission factor (>300 kg CO2/GJ) - likely error
+        
+        if emission_factor < 0.1 and emission_factor > 0:
+            return ValidationResult(
+                data_id=uuid4(),
+                rule_name="production_emission_correlation",
+                is_valid=False,
+                severity="warning",
+                message=(
+                    f"Anomalous emission factor: {emission_factor:.2f} kg CO₂/GJ is very low. "
+                    f"Energy intensity: {energy_intensity:.2f}, Emission intensity: {emission_intensity:.2f}"
+                ),
+                citation="GHG Protocol - Intensity Metrics",
+                suggested_fixes=[
+                    "Verify this is not due to high renewable energy usage",
+                    "Check emission factors are correctly applied",
+                    "Review for missing emission sources"
+                ],
+                actual_value=emission_factor
+            )
+        
+        if emission_factor > 300:
+            return ValidationResult(
+                data_id=uuid4(),
+                rule_name="production_emission_correlation",
+                is_valid=False,
+                severity="error",
+                message=(
+                    f"Anomalous emission factor: {emission_factor:.2f} kg CO₂/GJ is extremely high. "
+                    f"Energy intensity: {energy_intensity:.2f}, Emission intensity: {emission_intensity:.2f}"
+                ),
+                citation="GHG Protocol - Intensity Metrics",
+                suggested_fixes=[
+                    "Check for unit conversion errors",
+                    "Verify emission factors are not double-counted",
+                    "Review calculation methodology",
+                    "Ensure energy and emissions reporting periods match"
+                ],
+                actual_value=emission_factor
+            )
+        
+        return None
+    
     def validate_batch(
         self, 
         records: List[NormalizedRecord], 
         industry: str
     ) -> Dict[UUID, List[ValidationResult]]:
         """
-        Validate multiple records and include cross-record validations (outliers)
+        Validate multiple records and include cross-record validations (outliers, cross-field)
         
         Args:
             records: List of normalized records to validate
@@ -515,6 +914,13 @@ class ValidationEngine:
                 if outlier_result.data_id not in results:
                     results[outlier_result.data_id] = []
                 results[outlier_result.data_id].append(outlier_result)
+        
+        # Cross-field validation
+        cross_field_results = self.validate_cross_field_consistency(records)
+        for cross_field_result in cross_field_results:
+            if cross_field_result.data_id not in results:
+                results[cross_field_result.data_id] = []
+            results[cross_field_result.data_id].append(cross_field_result)
         
         return results
     

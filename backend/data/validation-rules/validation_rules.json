@@ -420,6 +420,169 @@
         "Document measurement uncertainty"
       ]
     }
+  },
+  "cross_field": {
+    "scope_totals_consistency": {
+      "rule_name": "scope_totals_consistency",
+      "description": "Scope 1 + Scope 2 + Scope 3 should equal total emissions within tolerance",
+      "indicator": "Scope totals validation",
+      "validation_type": "cross_field",
+      "parameters": {
+        "fields": ["scope_1", "scope_2", "scope_3", "total_emissions"],
+        "relationship": "sum",
+        "tolerance": 0.02
+      },
+      "severity": "error",
+      "citation": "GHG Protocol - Corporate Accounting and Reporting Standard",
+      "error_message": "Sum of individual scopes does not match reported total emissions.",
+      "suggested_fixes": [
+        "Verify all scope emissions are included in total",
+        "Check for double-counting across scopes",
+        "Review calculation methodology for total emissions",
+        "Ensure consistent reporting boundaries"
+      ]
+    },
+    "scope_subset_relationship": {
+      "rule_name": "scope_subset_relationship",
+      "description": "Individual scopes must not exceed total emissions",
+      "indicator": "Scope relationship validation",
+      "validation_type": "cross_field",
+      "parameters": {
+        "fields": ["scope_1", "scope_2", "total_emissions"],
+        "relationship": "subset",
+        "tolerance": 0.0
+      },
+      "severity": "error",
+      "citation": "GHG Protocol - Scope Definitions",
+      "error_message": "Individual scope emissions exceed total emissions.",
+      "suggested_fixes": [
+        "Review scope boundary definitions",
+        "Check for unit conversion errors between scope and total",
+        "Verify total emissions includes all reported scopes",
+        "Ensure no biogenic emissions are incorrectly included"
+      ]
+    },
+    "energy_balance": {
+      "rule_name": "energy_balance_validation",
+      "description": "Sum of energy sources should equal total energy consumption",
+      "indicator": "Energy balance validation",
+      "validation_type": "cross_field",
+      "parameters": {
+        "fields": ["electricity", "natural_gas", "fuel_oil", "steam", "total_energy"],
+        "relationship": "sum",
+        "tolerance": 0.05
+      },
+      "severity": "warning",
+      "citation": "ISO 50001 - Energy Management Systems",
+      "error_message": "Energy sources do not sum to total energy consumption within tolerance.",
+      "suggested_fixes": [
+        "Verify all energy sources are included",
+        "Check unit conversions (MWh, GJ, therms)",
+        "Account for energy conversion losses",
+        "Include renewable energy sources if applicable",
+        "Review metering and measurement accuracy"
+      ]
+    },
+    "production_energy_correlation": {
+      "rule_name": "production_energy_correlation",
+      "description": "Energy consumption should correlate reasonably with production volume",
+      "indicator": "Production-energy correlation",
+      "validation_type": "cross_field",
+      "parameters": {
+        "fields": ["energy_consumption", "production_volume"],
+        "relationship": "correlation",
+        "intensity_range": {"min": 0.5, "max": 50}
+      },
+      "severity": "warning",
+      "citation": "Industrial Energy Efficiency Best Practices",
+      "error_message": "Energy intensity (energy/production) is outside typical range.",
+      "suggested_fixes": [
+        "Verify production volume units are correct",
+        "Check if all energy sources are included",
+        "Review for seasonal variations or shutdowns",
+        "Confirm energy and production reporting periods match"
+      ]
+    },
+    "production_emission_correlation": {
+      "rule_name": "production_emission_correlation",
+      "description": "Emissions should correlate with production volume",
+      "indicator": "Production-emission correlation",
+      "validation_type": "cross_field",
+      "parameters": {
+        "fields": ["emissions", "production_volume"],
+        "relationship": "correlation",
+        "anomaly_threshold": 3.0
+      },
+      "severity": "error",
+      "citation": "GHG Protocol - Intensity Metrics",
+      "error_message": "Emission intensity is anomalous - high energy but low emissions or vice versa.",
+      "suggested_fixes": [
+        "Verify emission factors are correctly applied",
+        "Check for missing emission sources",
+        "Review renewable energy usage impact",
+        "Confirm production volume and emissions reporting alignment"
+      ]
+    },
+    "waste_material_balance": {
+      "rule_name": "waste_material_balance",
+      "description": "Waste generated should not exceed raw materials consumed",
+      "indicator": "Material balance validation",
+      "validation_type": "cross_field",
+      "parameters": {
+        "fields": ["waste_generated", "raw_materials_consumed"],
+        "relationship": "subset",
+        "tolerance": 0.1
+      },
+      "severity": "warning",
+      "citation": "Circular Economy Principles and Material Flow Analysis",
+      "error_message": "Waste generated exceeds raw materials consumed.",
+      "suggested_fixes": [
+        "Verify waste measurement methodology",
+        "Check if all raw materials are accounted for",
+        "Review for waste from previous periods",
+        "Confirm units are consistent between waste and materials"
+      ]
+    },
+    "water_withdrawal_discharge": {
+      "rule_name": "water_withdrawal_discharge_balance",
+      "description": "Water discharged should not exceed water withdrawn",
+      "indicator": "Water balance validation",
+      "validation_type": "cross_field",
+      "parameters": {
+        "fields": ["water_discharge", "water_withdrawal"],
+        "relationship": "subset",
+        "tolerance": 0.0
+      },
+      "severity": "error",
+      "citation": "CDP Water Security Questionnaire",
+      "error_message": "Water discharge exceeds water withdrawal.",
+      "suggested_fixes": [
+        "Verify water metering accuracy",
+        "Account for water consumed in processes",
+        "Check for measurement period misalignment",
+        "Review water balance calculations"
+      ]
+    },
+    "renewable_total_energy": {
+      "rule_name": "renewable_energy_subset",
+      "description": "Renewable energy cannot exceed total energy consumption",
+      "indicator": "Renewable energy validation",
+      "validation_type": "cross_field",
+      "parameters": {
+        "fields": ["renewable_energy", "total_energy"],
+        "relationship": "subset",
+        "tolerance": 0.0
+      },
+      "severity": "error",
+      "citation": "RE100 Technical Criteria",
+      "error_message": "Renewable energy exceeds total energy consumption.",
+      "suggested_fixes": [
+        "Verify renewable energy calculations",
+        "Check for double-counting of RECs",
+        "Ensure consistent units between renewable and total energy",
+        "Review total energy to include all sources"
+      ]
+    }
   }
 }
 

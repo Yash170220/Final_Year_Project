@@ -315,3 +315,209 @@ class TestValidationResults:
         result_dict = result.model_dump()
         assert result_dict["rule_name"] == "test_rule"
         assert result_dict["severity"] == "warning"
+
+
+class TestCrossFieldValidation:
+    """Test suite for cross-field validation"""
+    
+    def test_validate_scope_totals_valid(self, validation_engine):
+        """Test scope totals validation with valid data"""
+        result = validation_engine.validate_scope_totals(
+            scope_1=1000.0,
+            scope_2=500.0,
+            scope_3=300.0,
+            total=1800.0,
+            tolerance=0.02
+        )
+        assert result is None  # Should pass
+    
+    def test_validate_scope_totals_invalid(self, validation_engine):
+        """Test scope totals validation with mismatched totals"""
+        result = validation_engine.validate_scope_totals(
+            scope_1=1000.0,
+            scope_2=500.0,
+            scope_3=300.0,
+            total=2000.0,  # Doesn't match sum
+            tolerance=0.02
+        )
+        assert result is not None
+        assert result.is_valid is False
+        assert result.severity == "error"
+        assert "differs from total" in result.message
+    
+    def test_validate_scope_totals_without_scope3(self, validation_engine):
+        """Test scope totals with only Scope 1 and 2"""
+        result = validation_engine.validate_scope_totals(
+            scope_1=1000.0,
+            scope_2=500.0,
+            scope_3=None,
+            total=1500.0
+        )
+        assert result is None
+    
+    def test_validate_energy_balance_valid(self, validation_engine):
+        """Test energy balance validation with valid data"""
+        result = validation_engine.validate_energy_balance(
+            electricity=1000.0,
+            fuel=500.0,
+            steam=200.0,
+            total_energy=1700.0,
+            tolerance=0.05
+        )
+        assert result is None
+    
+    def test_validate_energy_balance_invalid(self, validation_engine):
+        """Test energy balance with mismatched totals"""
+        result = validation_engine.validate_energy_balance(
+            electricity=1000.0,
+            fuel=500.0,
+            steam=200.0,
+            total_energy=2000.0,  # Significantly different
+            tolerance=0.05
+        )
+        assert result is not None
+        assert result.is_valid is False
+        assert "differ from total" in result.message
+    
+    def test_validate_production_correlation_normal(self, validation_engine):
+        """Test production correlation with normal values"""
+        result = validation_engine.validate_production_correlation(
+            energy=10000.0,  # GJ
+            emissions=2000.0,  # kg CO2
+            production=100.0  # units
+        )
+        # Emission factor = 2000/10000 = 0.2 kg CO2/GJ (normal range)
+        assert result is None
+    
+    def test_validate_production_correlation_low_emissions(self, validation_engine):
+        """Test production correlation with suspiciously low emissions"""
+        result = validation_engine.validate_production_correlation(
+            energy=10000.0,  # GJ
+            emissions=500.0,  # kg CO2 (very low)
+            production=100.0
+        )
+        # Emission factor = 500/10000 = 0.05 kg CO2/GJ (too low)
+        assert result is not None
+        assert result.severity == "warning"
+        assert "very low" in result.message.lower()
+    
+    def test_validate_production_correlation_high_emissions(self, validation_engine):
+        """Test production correlation with anomalously high emissions"""
+        result = validation_engine.validate_production_correlation(
+            energy=10000.0,  # GJ
+            emissions=5000000.0,  # kg CO2 (extremely high)
+            production=100.0
+        )
+        # Emission factor = 5000000/10000 = 500 kg CO2/GJ (way too high)
+        assert result is not None
+        assert result.severity == "error"
+        assert "extremely high" in result.message.lower()
+    
+    def test_validate_cross_field_consistency(self, validation_engine):
+        """Test cross-field validation with multiple records"""
+        records = [
+            NormalizedRecord(
+                id=uuid4(),
+                indicator="scope_1",
+                value=1000.0,
+                unit="tonnes CO2e",
+                original_value=1000.0,
+                original_unit="tonnes CO2e"
+            ),
+            NormalizedRecord(
+                id=uuid4(),
+                indicator="scope_2",
+                value=500.0,
+                unit="tonnes CO2e",
+                original_value=500.0,
+                original_unit="tonnes CO2e"
+            ),
+            NormalizedRecord(
+                id=uuid4(),
+                indicator="total_emissions",
+                value=2000.0,  # Incorrect total
+                unit="tonnes CO2e",
+                original_value=2000.0,
+                original_unit="tonnes CO2e"
+            )
+        ]
+        
+        results = validation_engine.validate_cross_field_consistency(records)
+        
+        # Should detect mismatch between scopes and total
+        assert len(results) > 0
+    
+    def test_cross_field_sum_relationship(self, validation_engine):
+        """Test sum relationship validation"""
+        records_by_indicator = {
+            "electricity": NormalizedRecord(
+                id=uuid4(),
+                indicator="electricity",
+                value=1000.0,
+                unit="MWh",
+                original_value=1000.0,
+                original_unit="MWh"
+            ),
+            "natural_gas": NormalizedRecord(
+                id=uuid4(),
+                indicator="natural_gas",
+                value=500.0,
+                unit="MWh",
+                original_value=500.0,
+                original_unit="MWh"
+            ),
+            "total_energy": NormalizedRecord(
+                id=uuid4(),
+                indicator="total_energy",
+                value=1500.0,
+                unit="MWh",
+                original_value=1500.0,
+                original_unit="MWh"
+            )
+        }
+        
+        # Get energy balance rule
+        rule = None
+        for r in validation_engine.rules.get("cross_field", {}).values():
+            if r.rule_name == "energy_balance_validation":
+                rule = r
+                break
+        
+        if rule:
+            result = validation_engine._validate_sum_relationship(records_by_indicator, rule)
+            # Should pass since 1000 + 500 = 1500
+            assert result is None or result.is_valid
+    
+    def test_cross_field_subset_relationship(self, validation_engine):
+        """Test subset relationship validation"""
+        records_by_indicator = {
+            "renewable_energy": NormalizedRecord(
+                id=uuid4(),
+                indicator="renewable_energy",
+                value=2000.0,  # Exceeds total
+                unit="MWh",
+                original_value=2000.0,
+                original_unit="MWh"
+            ),
+            "total_energy": NormalizedRecord(
+                id=uuid4(),
+                indicator="total_energy",
+                value=1500.0,
+                unit="MWh",
+                original_value=1500.0,
+                original_unit="MWh"
+            )
+        }
+        
+        # Get renewable subset rule
+        rule = None
+        for r in validation_engine.rules.get("cross_field", {}).values():
+            if r.rule_name == "renewable_energy_subset":
+                rule = r
+                break
+        
+        if rule:
+            result = validation_engine._validate_subset_relationship(records_by_indicator, rule)
+            # Should fail since renewable > total
+            assert result is not None
+            assert result.is_valid is False
