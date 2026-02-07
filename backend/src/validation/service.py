@@ -545,3 +545,293 @@ class ValidationService:
             self.save_validation_results(results, record.upload_id)
         
         return results
+    
+    def mark_error_as_reviewed(
+        self, 
+        result_id: UUID, 
+        reviewer: str, 
+        notes: str
+    ) -> None:
+        """
+        Mark a validation error as reviewed
+        
+        Args:
+            result_id: UUID of the validation result
+            reviewer: Name/ID of the reviewer
+            notes: Reviewer notes explaining the review decision
+        
+        Raises:
+            ValueError: If validation result not found
+        """
+        # Get the validation result
+        validation_result = self.db.query(DBValidationResult).filter(
+            DBValidationResult.id == result_id
+        ).first()
+        
+        if not validation_result:
+            raise ValueError(f"Validation result {result_id} not found")
+        
+        # Update reviewed status
+        validation_result.reviewed = True
+        validation_result.reviewer_notes = notes
+        validation_result.updated_at = datetime.utcnow()
+        
+        self.db.commit()
+        
+        # Log audit trail
+        audit_log = AuditLog(
+            entity_id=result_id,
+            entity_type="validation_result",
+            action=AuditAction.REVIEWED,
+            actor=reviewer,
+            changes={
+                "reviewed": True,
+                "reviewer": reviewer,
+                "notes": notes,
+                "rule_name": validation_result.rule_name,
+                "severity": validation_result.severity.value
+            }
+        )
+        self.db.add(audit_log)
+        self.db.commit()
+    
+    def suppress_warning(self, result_id: UUID, reason: str, reviewer: str = "system") -> None:
+        """
+        Suppress a validation warning
+        
+        Marks warning as acknowledged so it doesn't show in future reports.
+        
+        Args:
+            result_id: UUID of the validation result
+            reason: Reason for suppressing the warning
+            reviewer: Name/ID of who suppressed it (default: "system")
+        
+        Raises:
+            ValueError: If validation result not found or is an error (not warning)
+        """
+        # Get the validation result
+        validation_result = self.db.query(DBValidationResult).filter(
+            DBValidationResult.id == result_id
+        ).first()
+        
+        if not validation_result:
+            raise ValueError(f"Validation result {result_id} not found")
+        
+        if validation_result.severity == Severity.ERROR:
+            raise ValueError("Cannot suppress errors, only warnings. Use mark_error_as_reviewed for errors.")
+        
+        # Mark as reviewed with suppression reason
+        validation_result.reviewed = True
+        validation_result.reviewer_notes = f"SUPPRESSED: {reason}"
+        validation_result.updated_at = datetime.utcnow()
+        
+        self.db.commit()
+        
+        # Log audit trail
+        audit_log = AuditLog(
+            entity_id=result_id,
+            entity_type="validation_result",
+            action=AuditAction.REVIEWED,
+            actor=reviewer,
+            changes={
+                "action": "suppressed",
+                "reason": reason,
+                "rule_name": validation_result.rule_name
+            }
+        )
+        self.db.add(audit_log)
+        self.db.commit()
+    
+    def get_unreviewed_errors(self, upload_id: UUID) -> List[Dict[str, Any]]:
+        """
+        Get validation errors that haven't been reviewed
+        
+        Used for blocking export until all errors are reviewed or corrected.
+        
+        Args:
+            upload_id: UUID of the upload
+        
+        Returns:
+            List of unreviewed validation errors
+        """
+        unreviewed_errors = self.db.query(DBValidationResult).join(
+            NormalizedData,
+            DBValidationResult.data_id == NormalizedData.id
+        ).filter(
+            and_(
+                NormalizedData.upload_id == upload_id,
+                DBValidationResult.severity == Severity.ERROR,
+                DBValidationResult.is_valid == False,
+                DBValidationResult.reviewed == False
+            )
+        ).order_by(
+            DBValidationResult.rule_name
+        ).all()
+        
+        return [self._serialize_validation_result(error) for error in unreviewed_errors]
+    
+    def calculate_final_pass_rate(self, upload_id: UUID) -> float:
+        """
+        Calculate pass rate excluding reviewed/suppressed items
+        
+        Returns the actual pass rate after human review, excluding:
+        - Reviewed errors (false positives)
+        - Suppressed warnings
+        
+        Args:
+            upload_id: UUID of the upload
+        
+        Returns:
+            Final pass rate as percentage (0-100)
+        """
+        # Get total records
+        total_records = self.db.query(NormalizedData).filter(
+            NormalizedData.upload_id == upload_id
+        ).count()
+        
+        if total_records == 0:
+            return 100.0
+        
+        # Get unreviewed errors only
+        unreviewed_errors = self.db.query(DBValidationResult).join(
+            NormalizedData,
+            DBValidationResult.data_id == NormalizedData.id
+        ).filter(
+            and_(
+                NormalizedData.upload_id == upload_id,
+                DBValidationResult.severity == Severity.ERROR,
+                DBValidationResult.is_valid == False,
+                DBValidationResult.reviewed == False
+            )
+        ).all()
+        
+        # Get unique data IDs with unreviewed errors
+        records_with_unreviewed_errors = set(err.data_id for err in unreviewed_errors)
+        
+        # Calculate pass rate
+        records_passing = total_records - len(records_with_unreviewed_errors)
+        pass_rate = (records_passing / total_records) * 100
+        
+        return round(pass_rate, 2)
+    
+    def get_review_summary(self, upload_id: UUID) -> Dict[str, Any]:
+        """
+        Get summary of review status for an upload
+        
+        Args:
+            upload_id: UUID of the upload
+        
+        Returns:
+            Dictionary with review statistics
+        """
+        # Get all validation results
+        all_results = self.db.query(DBValidationResult).join(
+            NormalizedData,
+            DBValidationResult.data_id == NormalizedData.id
+        ).filter(
+            NormalizedData.upload_id == upload_id
+        ).all()
+        
+        total_errors = sum(
+            1 for r in all_results 
+            if r.severity == Severity.ERROR and not r.is_valid
+        )
+        
+        reviewed_errors = sum(
+            1 for r in all_results 
+            if r.severity == Severity.ERROR and not r.is_valid and r.reviewed
+        )
+        
+        unreviewed_errors = total_errors - reviewed_errors
+        
+        total_warnings = sum(
+            1 for r in all_results 
+            if r.severity == Severity.WARNING and not r.is_valid
+        )
+        
+        suppressed_warnings = sum(
+            1 for r in all_results 
+            if r.severity == Severity.WARNING and not r.is_valid and r.reviewed
+        )
+        
+        active_warnings = total_warnings - suppressed_warnings
+        
+        # Check if ready for export
+        ready_for_export = unreviewed_errors == 0
+        
+        return {
+            "total_errors": total_errors,
+            "reviewed_errors": reviewed_errors,
+            "unreviewed_errors": unreviewed_errors,
+            "total_warnings": total_warnings,
+            "suppressed_warnings": suppressed_warnings,
+            "active_warnings": active_warnings,
+            "ready_for_export": ready_for_export,
+            "final_pass_rate": self.calculate_final_pass_rate(upload_id)
+        }
+    
+    def bulk_review_errors(
+        self,
+        result_ids: List[UUID],
+        reviewer: str,
+        notes: str
+    ) -> int:
+        """
+        Mark multiple validation errors as reviewed in bulk
+        
+        Args:
+            result_ids: List of validation result IDs
+            reviewer: Name/ID of the reviewer
+            notes: Reviewer notes (applied to all)
+        
+        Returns:
+            Number of results reviewed
+        """
+        count = 0
+        
+        for result_id in result_ids:
+            try:
+                self.mark_error_as_reviewed(result_id, reviewer, notes)
+                count += 1
+            except ValueError:
+                # Skip invalid IDs
+                continue
+        
+        return count
+    
+    def get_reviewed_items(self, upload_id: UUID) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get all reviewed items (errors and suppressed warnings)
+        
+        Args:
+            upload_id: UUID of the upload
+        
+        Returns:
+            Dictionary with reviewed_errors and suppressed_warnings
+        """
+        reviewed_items = self.db.query(DBValidationResult).join(
+            NormalizedData,
+            DBValidationResult.data_id == NormalizedData.id
+        ).filter(
+            and_(
+                NormalizedData.upload_id == upload_id,
+                DBValidationResult.reviewed == True
+            )
+        ).all()
+        
+        reviewed_errors = []
+        suppressed_warnings = []
+        
+        for item in reviewed_items:
+            serialized = self._serialize_validation_result(item)
+            serialized["reviewer_notes"] = item.reviewer_notes
+            
+            if item.severity == Severity.ERROR:
+                reviewed_errors.append(serialized)
+            else:
+                suppressed_warnings.append(serialized)
+        
+        return {
+            "reviewed_errors": reviewed_errors,
+            "suppressed_warnings": suppressed_warnings
+        }

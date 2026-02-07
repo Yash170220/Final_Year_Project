@@ -365,3 +365,193 @@ class TestValidationReport:
         
         assert len(report.errors) == 1
         assert len(report.warnings) == 1
+
+
+class TestReviewFunctionality:
+    """Test suite for validation review and bypass functionality"""
+    
+    def test_mark_error_as_reviewed(self, validation_service, mock_db_session):
+        """Test marking error as reviewed"""
+        from src.common.models import ValidationResult as DBValidationResult, Severity
+        
+        result_id = uuid4()
+        
+        # Mock validation result
+        mock_result = DBValidationResult(
+            id=result_id,
+            data_id=uuid4(),
+            rule_name="test_rule",
+            is_valid=False,
+            severity=Severity.ERROR,
+            message="Test error",
+            citation="Test",
+            reviewed=False
+        )
+        
+        # Mock query chain
+        mock_query = Mock()
+        mock_query.filter.return_value.first.return_value = mock_result
+        mock_db_session.query.return_value = mock_query
+        
+        # Mark as reviewed
+        validation_service.mark_error_as_reviewed(
+            result_id,
+            "test.reviewer@example.com",
+            "False positive - special case"
+        )
+        
+        # Verify it was marked as reviewed
+        assert mock_result.reviewed is True
+        assert mock_result.reviewer_notes == "False positive - special case"
+    
+    def test_suppress_warning(self, validation_service, mock_db_session):
+        """Test suppressing warning"""
+        from src.common.models import ValidationResult as DBValidationResult, Severity
+        
+        result_id = uuid4()
+        
+        # Mock validation result (warning)
+        mock_result = DBValidationResult(
+            id=result_id,
+            data_id=uuid4(),
+            rule_name="test_warning",
+            is_valid=False,
+            severity=Severity.WARNING,
+            message="Test warning",
+            citation="Test",
+            reviewed=False
+        )
+        
+        # Mock query chain
+        mock_query = Mock()
+        mock_query.filter.return_value.first.return_value = mock_result
+        mock_db_session.query.return_value = mock_query
+        
+        # Suppress warning
+        validation_service.suppress_warning(
+            result_id,
+            "Acceptable variance for this facility",
+            "test.reviewer@example.com"
+        )
+        
+        # Verify it was suppressed
+        assert mock_result.reviewed is True
+        assert "SUPPRESSED" in mock_result.reviewer_notes
+    
+    def test_suppress_error_fails(self, validation_service, mock_db_session):
+        """Test that suppressing errors is not allowed"""
+        from src.common.models import ValidationResult as DBValidationResult, Severity
+        
+        result_id = uuid4()
+        
+        # Mock validation result (error)
+        mock_result = DBValidationResult(
+            id=result_id,
+            data_id=uuid4(),
+            rule_name="test_error",
+            is_valid=False,
+            severity=Severity.ERROR,
+            message="Test error",
+            citation="Test",
+            reviewed=False
+        )
+        
+        # Mock query chain
+        mock_query = Mock()
+        mock_query.filter.return_value.first.return_value = mock_result
+        mock_db_session.query.return_value = mock_query
+        
+        # Try to suppress error - should raise error
+        with pytest.raises(ValueError, match="Cannot suppress errors"):
+            validation_service.suppress_warning(result_id, "Test", "reviewer")
+    
+    def test_calculate_final_pass_rate(self, validation_service, mock_db_session):
+        """Test final pass rate calculation"""
+        upload_id = uuid4()
+        
+        # Mock 100 total records
+        mock_db_session.query.return_value.filter.return_value.count.return_value = 100
+        
+        # Mock 10 unreviewed errors (90% pass rate)
+        mock_unreviewed = [Mock(data_id=uuid4()) for _ in range(10)]
+        mock_db_session.query.return_value.join.return_value.filter.return_value.all.return_value = mock_unreviewed
+        
+        final_rate = validation_service.calculate_final_pass_rate(upload_id)
+        
+        # Should be 90% (90 out of 100 pass)
+        assert final_rate == 90.0
+    
+    def test_calculate_final_pass_rate_all_reviewed(self, validation_service, mock_db_session):
+        """Test final pass rate when all errors reviewed"""
+        upload_id = uuid4()
+        
+        # Mock 100 total records
+        mock_db_session.query.return_value.filter.return_value.count.return_value = 100
+        
+        # Mock 0 unreviewed errors (100% pass rate)
+        mock_db_session.query.return_value.join.return_value.filter.return_value.all.return_value = []
+        
+        final_rate = validation_service.calculate_final_pass_rate(upload_id)
+        
+        # Should be 100%
+        assert final_rate == 100.0
+    
+    def test_get_review_summary(self, validation_service, mock_db_session):
+        """Test review summary generation"""
+        from src.common.models import ValidationResult as DBValidationResult, Severity
+        
+        upload_id = uuid4()
+        
+        # Mock validation results
+        mock_results = [
+            # 3 unreviewed errors
+            Mock(severity=Severity.ERROR, is_valid=False, reviewed=False),
+            Mock(severity=Severity.ERROR, is_valid=False, reviewed=False),
+            Mock(severity=Severity.ERROR, is_valid=False, reviewed=False),
+            # 2 reviewed errors
+            Mock(severity=Severity.ERROR, is_valid=False, reviewed=True),
+            Mock(severity=Severity.ERROR, is_valid=False, reviewed=True),
+            # 5 warnings (2 suppressed)
+            Mock(severity=Severity.WARNING, is_valid=False, reviewed=False),
+            Mock(severity=Severity.WARNING, is_valid=False, reviewed=False),
+            Mock(severity=Severity.WARNING, is_valid=False, reviewed=False),
+            Mock(severity=Severity.WARNING, is_valid=False, reviewed=True),
+            Mock(severity=Severity.WARNING, is_valid=False, reviewed=True),
+        ]
+        
+        mock_db_session.query.return_value.join.return_value.filter.return_value.all.return_value = mock_results
+        
+        # Mock calculate_final_pass_rate
+        validation_service.calculate_final_pass_rate = Mock(return_value=95.0)
+        
+        summary = validation_service.get_review_summary(upload_id)
+        
+        assert summary["total_errors"] == 5
+        assert summary["reviewed_errors"] == 2
+        assert summary["unreviewed_errors"] == 3
+        assert summary["total_warnings"] == 5
+        assert summary["suppressed_warnings"] == 2
+        assert summary["active_warnings"] == 3
+        assert summary["ready_for_export"] is False  # Has unreviewed errors
+        assert summary["final_pass_rate"] == 95.0
+    
+    def test_ready_for_export(self, validation_service, mock_db_session):
+        """Test ready for export status"""
+        from src.common.models import ValidationResult as DBValidationResult, Severity
+        
+        upload_id = uuid4()
+        
+        # Mock all errors reviewed
+        mock_results = [
+            Mock(severity=Severity.ERROR, is_valid=False, reviewed=True),
+            Mock(severity=Severity.ERROR, is_valid=False, reviewed=True),
+        ]
+        
+        mock_db_session.query.return_value.join.return_value.filter.return_value.all.return_value = mock_results
+        
+        validation_service.calculate_final_pass_rate = Mock(return_value=100.0)
+        
+        summary = validation_service.get_review_summary(upload_id)
+        
+        assert summary["unreviewed_errors"] == 0
+        assert summary["ready_for_export"] is True

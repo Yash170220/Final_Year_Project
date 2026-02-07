@@ -707,3 +707,292 @@ async def revalidate_record(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Re-validation error: {str(e)}")
+
+
+# New review/bypass endpoints
+
+class MarkReviewedRequest(BaseModel):
+    """Request model for marking error as reviewed"""
+    result_id: UUID
+    reviewer: str
+    notes: str
+
+
+class SuppressWarningRequest(BaseModel):
+    """Request model for suppressing warning"""
+    result_id: UUID
+    reason: str
+    reviewer: str = "system"
+
+
+class BulkReviewRequest(BaseModel):
+    """Request model for bulk review"""
+    result_ids: List[UUID]
+    reviewer: str
+    notes: str
+
+
+@router.post("/review/mark-reviewed")
+async def mark_error_reviewed(
+    request: MarkReviewedRequest,
+    service: ValidationService = Depends(get_validation_service)
+):
+    """
+    Mark a validation error as reviewed
+    
+    Used when an error is a false positive or has been acknowledged.
+    Updates the validation result and logs the review in audit trail.
+    
+    Args:
+        request: Review information (result_id, reviewer, notes)
+        service: Validation service instance
+    
+    Returns:
+        Success confirmation
+    
+    Example:
+        {
+          "result_id": "uuid",
+          "reviewer": "john.doe@company.com",
+          "notes": "False positive - value is correct for this special case"
+        }
+    """
+    try:
+        service.mark_error_as_reviewed(
+            request.result_id,
+            request.reviewer,
+            request.notes
+        )
+        return {
+            "status": "success",
+            "message": "Error marked as reviewed",
+            "result_id": str(request.result_id),
+            "reviewer": request.reviewer
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error marking as reviewed: {str(e)}")
+
+
+@router.post("/review/suppress-warning")
+async def suppress_validation_warning(
+    request: SuppressWarningRequest,
+    service: ValidationService = Depends(get_validation_service)
+):
+    """
+    Suppress a validation warning
+    
+    Acknowledges a warning so it doesn't appear in future reports.
+    Cannot be used for errors - errors must be marked as reviewed.
+    
+    Args:
+        request: Suppression information (result_id, reason, reviewer)
+        service: Validation service instance
+    
+    Returns:
+        Success confirmation
+    
+    Example:
+        {
+          "result_id": "uuid",
+          "reason": "Acceptable variance for this facility type",
+          "reviewer": "jane.smith@company.com"
+        }
+    """
+    try:
+        service.suppress_warning(
+            request.result_id,
+            request.reason,
+            request.reviewer
+        )
+        return {
+            "status": "success",
+            "message": "Warning suppressed",
+            "result_id": str(request.result_id)
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error suppressing warning: {str(e)}")
+
+
+@router.post("/review/bulk-review")
+async def bulk_review_errors(
+    request: BulkReviewRequest,
+    service: ValidationService = Depends(get_validation_service)
+):
+    """
+    Mark multiple validation errors as reviewed in bulk
+    
+    Efficient way to review multiple similar errors at once.
+    
+    Args:
+        request: Bulk review information (result_ids, reviewer, notes)
+        service: Validation service instance
+    
+    Returns:
+        Number of items successfully reviewed
+    """
+    try:
+        count = service.bulk_review_errors(
+            request.result_ids,
+            request.reviewer,
+            request.notes
+        )
+        return {
+            "status": "success",
+            "reviewed_count": count,
+            "total_requested": len(request.result_ids)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Bulk review error: {str(e)}")
+
+
+@router.get("/unreviewed/{upload_id}")
+async def get_unreviewed_errors(
+    upload_id: UUID,
+    service: ValidationService = Depends(get_validation_service)
+):
+    """
+    Get validation errors that haven't been reviewed
+    
+    Used for blocking export until all errors are reviewed or corrected.
+    Only returns unreviewed errors - reviewed errors are excluded.
+    
+    Args:
+        upload_id: UUID of the upload
+        service: Validation service instance
+    
+    Returns:
+        List of unreviewed validation errors
+    
+    Example Response:
+        {
+          "upload_id": "uuid",
+          "unreviewed_count": 15,
+          "errors": [...],
+          "blocking_export": true
+        }
+    """
+    try:
+        errors = service.get_unreviewed_errors(upload_id)
+        return {
+            "upload_id": str(upload_id),
+            "unreviewed_count": len(errors),
+            "errors": errors,
+            "blocking_export": len(errors) > 0
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving unreviewed errors: {str(e)}")
+
+
+@router.get("/review-summary/{upload_id}")
+async def get_review_summary(
+    upload_id: UUID,
+    service: ValidationService = Depends(get_validation_service)
+):
+    """
+    Get summary of review status for an upload
+    
+    Shows total errors, reviewed errors, unreviewed errors, warnings status,
+    and whether the upload is ready for export.
+    
+    Args:
+        upload_id: UUID of the upload
+        service: Validation service instance
+    
+    Returns:
+        Review summary with export readiness status
+    
+    Example Response:
+        {
+          "total_errors": 50,
+          "reviewed_errors": 35,
+          "unreviewed_errors": 15,
+          "total_warnings": 30,
+          "suppressed_warnings": 10,
+          "active_warnings": 20,
+          "ready_for_export": false,
+          "final_pass_rate": 92.5
+        }
+    """
+    try:
+        summary = service.get_review_summary(upload_id)
+        return {
+            "upload_id": str(upload_id),
+            **summary
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating review summary: {str(e)}")
+
+
+@router.get("/final-pass-rate/{upload_id}")
+async def get_final_pass_rate(
+    upload_id: UUID,
+    service: ValidationService = Depends(get_validation_service)
+):
+    """
+    Calculate final pass rate excluding reviewed/suppressed items
+    
+    Returns the actual pass rate after human review, excluding:
+    - Reviewed errors (false positives)
+    - Suppressed warnings
+    
+    Args:
+        upload_id: UUID of the upload
+        service: Validation service instance
+    
+    Returns:
+        Final pass rate as percentage
+    
+    Example Response:
+        {
+          "upload_id": "uuid",
+          "initial_pass_rate": 85.5,
+          "final_pass_rate": 94.2,
+          "improvement": 8.7
+        }
+    """
+    try:
+        final_rate = service.calculate_final_pass_rate(upload_id)
+        
+        # Get initial pass rate for comparison
+        stats = service.get_validation_statistics(upload_id)
+        initial_rate = stats.get("pass_rate", 0)
+        
+        return {
+            "upload_id": str(upload_id),
+            "initial_pass_rate": initial_rate,
+            "final_pass_rate": final_rate,
+            "improvement": round(final_rate - initial_rate, 2)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating final pass rate: {str(e)}")
+
+
+@router.get("/reviewed-items/{upload_id}")
+async def get_reviewed_items(
+    upload_id: UUID,
+    service: ValidationService = Depends(get_validation_service)
+):
+    """
+    Get all reviewed items (errors and suppressed warnings)
+    
+    Shows which items have been reviewed and why, for audit purposes.
+    
+    Args:
+        upload_id: UUID of the upload
+        service: Validation service instance
+    
+    Returns:
+        Dictionary with reviewed errors and suppressed warnings
+    """
+    try:
+        items = service.get_reviewed_items(upload_id)
+        return {
+            "upload_id": str(upload_id),
+            **items
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving reviewed items: {str(e)}")
