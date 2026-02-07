@@ -2,6 +2,7 @@
 import pytest
 from uuid import uuid4
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from src.validation.engine import (
     ValidationEngine,
@@ -521,3 +522,485 @@ class TestCrossFieldValidation:
             # Should fail since renewable > total
             assert result is not None
             assert result.is_valid is False
+
+
+# ============================================================================
+# COMPREHENSIVE RULE TESTS (Prompt 31)
+# ============================================================================
+
+class TestCementIndustryRules:
+    """Comprehensive tests for cement industry validation rules"""
+    
+    def test_cement_emission_range_valid(self, validation_engine):
+        """Test valid cement emission value - Prompt 31 Test #1"""
+        record = NormalizedRecord(
+            id=uuid4(),
+            indicator="Scope 1 GHG Emissions per tonne clinker",
+            value=950.0,  # Within valid range 800-1100
+            unit="kg CO₂/tonne",
+            original_value=950.0,
+            original_unit="kg CO₂/tonne"
+        )
+        results = validation_engine.validate_record(record, "cement_industry")
+        assert len(results) == 0, "950 kg CO₂/tonne should pass validation"
+    
+    def test_cement_emission_range_too_high(self, validation_engine):
+        """Test cement emission value too high - Prompt 31 Test #2"""
+        record = NormalizedRecord(
+            id=uuid4(),
+            indicator="Scope 1 GHG Emissions per tonne clinker",
+            value=1500.0,  # Above maximum of 1100
+            unit="kg CO₂/tonne",
+            original_value=1500.0,
+            original_unit="kg CO₂/tonne"
+        )
+        results = validation_engine.validate_record(record, "cement_industry")
+        assert len(results) > 0, "1500 kg CO₂/tonne should fail validation"
+        assert results[0].severity == "error"
+        assert results[0].rule_name == "cement_emission_range"
+        assert "above maximum" in results[0].message.lower()
+    
+    def test_cement_emission_range_too_low(self, validation_engine):
+        """Test cement emission value too low (likely unit error) - Prompt 31 Test #3"""
+        record = NormalizedRecord(
+            id=uuid4(),
+            indicator="Scope 1 GHG Emissions per tonne clinker",
+            value=500.0,  # Below minimum of 800
+            unit="kg CO₂/tonne",
+            original_value=500.0,
+            original_unit="kg CO₂/tonne"
+        )
+        results = validation_engine.validate_record(record, "cement_industry")
+        assert len(results) > 0, "500 kg CO₂/tonne should fail validation"
+        assert results[0].severity == "error"
+        assert results[0].rule_name == "cement_emission_range"
+        assert "below minimum" in results[0].message.lower()
+
+
+class TestSteelIndustryRules:
+    """Comprehensive tests for steel industry validation rules"""
+    
+    def test_steel_bf_bof_range(self, validation_engine):
+        """Test valid BF-BOF steel emission value - Prompt 31 Test #4"""
+        record = NormalizedRecord(
+            id=uuid4(),
+            indicator="Scope 1 GHG Emissions per tonne crude steel (BF-BOF)",
+            value=2200.0,  # Within range 1800-2500
+            unit="kg CO₂/tonne crude steel",
+            original_value=2200.0,
+            original_unit="kg CO₂/tonne crude steel"
+        )
+        results = validation_engine.validate_record(record, "steel_industry")
+        assert len(results) == 0, "2200 kg CO₂/tonne should pass for BF-BOF"
+    
+    def test_steel_eaf_range(self, validation_engine):
+        """Test valid EAF steel emission value - Prompt 31 Test #5"""
+        record = NormalizedRecord(
+            id=uuid4(),
+            indicator="Scope 1 GHG Emissions per tonne crude steel (EAF)",
+            value=500.0,  # Within range 400-600
+            unit="kg CO₂/tonne crude steel",
+            original_value=500.0,
+            original_unit="kg CO₂/tonne crude steel"
+        )
+        results = validation_engine.validate_record(record, "steel_industry")
+        assert len(results) == 0, "500 kg CO₂/tonne should pass for EAF"
+
+
+class TestOutlierDetectionComprehensive:
+    """Comprehensive tests for outlier detection"""
+    
+    def test_outlier_detection_exact_input(self, validation_engine):
+        """Test outlier detection with exact input - Prompt 31 Test #6"""
+        # Input: [100, 105, 98, 102, 1000, 99]
+        # Expected: 1000 flagged as outlier
+        records = [
+            (uuid4(), 100.0),
+            (uuid4(), 105.0),
+            (uuid4(), 98.0),
+            (uuid4(), 102.0),
+            (uuid4(), 1000.0),  # Clear outlier
+            (uuid4(), 99.0),
+        ]
+        
+        outlier_rule = validation_engine._get_outlier_rule("cross_industry")
+        assert outlier_rule is not None
+        
+        results = validation_engine.outlier_detection(records, outlier_rule)
+        
+        # Should detect the outlier
+        assert len(results) > 0, "Outlier (1000) should be detected"
+        
+        # The outlier (1000.0) should be flagged
+        outlier_data_ids = [r.data_id for r in results]
+        assert records[4][0] in outlier_data_ids, "Value 1000 should be flagged"
+        
+        # Check result details
+        outlier_result = next(r for r in results if r.data_id == records[4][0])
+        assert outlier_result.rule_name == "detect_decimal_errors"
+        assert outlier_result.severity == "error"
+
+
+class TestTemporalConsistencyComprehensive:
+    """Comprehensive tests for temporal consistency validation"""
+    
+    def test_temporal_consistency_pass_exact(self, validation_engine):
+        """Test temporal consistency within tolerance - Prompt 31 Test #7"""
+        # Input: Monthly sum = 11,990, Annual = 12,000
+        # Expected: Passes (within 2% tolerance)
+        monthly_data = {
+            "Jan": 999.0, "Feb": 1000.0, "Mar": 1000.0,
+            "Apr": 1000.0, "May": 1000.0, "Jun": 1000.0,
+            "Jul": 999.0, "Aug": 999.0, "Sep": 999.0,
+            "Oct": 999.0, "Nov": 998.0, "Dec": 997.0
+        }
+        # Sum = 11,990
+        annual_total = 12000.0
+        
+        rule = None
+        for r in validation_engine.rules["cross_industry"].values():
+            if r.rule_name == "monthly_sum_equals_annual":
+                rule = r
+                break
+        
+        assert rule is not None
+        result = validation_engine.temporal_consistency(
+            monthly_data, 
+            annual_total, 
+            rule, 
+            uuid4()
+        )
+        
+        # Difference: (12000 - 11990) / 12000 = 0.083% < 2%
+        assert result is None, "Should pass within 2% tolerance"
+    
+    def test_temporal_consistency_fail_exact(self, validation_engine):
+        """Test temporal consistency outside tolerance - Prompt 31 Test #8"""
+        # Input: Monthly sum = 10,000, Annual = 12,000
+        # Expected: Warning flagged (16.7% difference > 2% tolerance)
+        monthly_data = {
+            "Jan": 833.0, "Feb": 833.0, "Mar": 834.0,
+            "Apr": 833.0, "May": 833.0, "Jun": 834.0,
+            "Jul": 833.0, "Aug": 833.0, "Sep": 834.0,
+            "Oct": 833.0, "Nov": 833.0, "Dec": 834.0
+        }
+        # Sum = 10,000
+        annual_total = 12000.0
+        
+        rule = None
+        for r in validation_engine.rules["cross_industry"].values():
+            if r.rule_name == "monthly_sum_equals_annual":
+                rule = r
+                break
+        
+        assert rule is not None
+        result = validation_engine.temporal_consistency(
+            monthly_data, 
+            annual_total, 
+            rule, 
+            uuid4()
+        )
+        
+        # Difference: (12000 - 10000) / 12000 = 16.7% > 2%
+        assert result is not None, "Should fail outside 2% tolerance"
+        assert result.is_valid is False
+        assert result.severity == "warning"
+        assert "differs from annual total" in result.message.lower()
+
+
+class TestCrossFieldIntegrationTests:
+    """Cross-field validation integration tests"""
+    
+    def test_scope_totals_consistency_exact(self, validation_engine):
+        """Test scope totals match - Prompt 31 Test #9"""
+        # Input: S1=100, S2=50, S3=30, Total=180
+        # Expected: Passes (100+50+30 = 180)
+        result = validation_engine.validate_scope_totals(
+            scope_1=100.0,
+            scope_2=50.0,
+            scope_3=30.0,
+            total=180.0,
+            tolerance=0.02
+        )
+        assert result is None, "Scope totals should match (100+50+30=180)"
+    
+    def test_scope_totals_mismatch_exact(self, validation_engine):
+        """Test scope totals mismatch - Prompt 31 Test #10"""
+        # Input: S1=100, S2=50, S3=30, Total=200
+        # Expected: Error flagged (100+50+30=180 ≠ 200)
+        result = validation_engine.validate_scope_totals(
+            scope_1=100.0,
+            scope_2=50.0,
+            scope_3=30.0,
+            total=200.0,
+            tolerance=0.02
+        )
+        assert result is not None, "Should detect mismatch (180 ≠ 200)"
+        assert result.is_valid is False
+        assert result.severity == "error"
+        assert result.rule_name == "scope_totals_consistency"
+        # Difference: (200-180)/200 = 10% > 2%
+        assert "differs from total" in result.message.lower()
+
+
+# ============================================================================
+# PARAMETRIZED TESTS (Multiple Industries)
+# ============================================================================
+
+@pytest.mark.parametrize("industry,indicator,value,expected_valid", [
+    # Cement industry tests
+    ("cement_industry", "Scope 1 GHG Emissions per tonne clinker", 950.0, True),
+    ("cement_industry", "Scope 1 GHG Emissions per tonne clinker", 1500.0, False),
+    ("cement_industry", "Scope 1 GHG Emissions per tonne clinker", 500.0, False),
+    ("cement_industry", "Scope 1 GHG Emissions per tonne clinker", 800.0, True),  # Min boundary
+    ("cement_industry", "Scope 1 GHG Emissions per tonne clinker", 1100.0, True),  # Max boundary
+    
+    # Steel BF-BOF tests
+    ("steel_industry", "Scope 1 GHG Emissions per tonne crude steel (BF-BOF)", 2200.0, True),
+    ("steel_industry", "Scope 1 GHG Emissions per tonne crude steel (BF-BOF)", 1800.0, True),  # Min
+    ("steel_industry", "Scope 1 GHG Emissions per tonne crude steel (BF-BOF)", 2500.0, True),  # Max
+    ("steel_industry", "Scope 1 GHG Emissions per tonne crude steel (BF-BOF)", 3000.0, False),
+    ("steel_industry", "Scope 1 GHG Emissions per tonne crude steel (BF-BOF)", 1000.0, False),
+    
+    # Steel EAF tests
+    ("steel_industry", "Scope 1 GHG Emissions per tonne crude steel (EAF)", 500.0, True),
+    ("steel_industry", "Scope 1 GHG Emissions per tonne crude steel (EAF)", 400.0, True),  # Min
+    ("steel_industry", "Scope 1 GHG Emissions per tonne crude steel (EAF)", 600.0, True),  # Max
+    ("steel_industry", "Scope 1 GHG Emissions per tonne crude steel (EAF)", 800.0, False),
+    ("steel_industry", "Scope 1 GHG Emissions per tonne crude steel (EAF)", 200.0, False),
+])
+def test_industry_emission_ranges(validation_engine, industry, indicator, value, expected_valid):
+    """Parametrized test for multiple industry emission ranges"""
+    record = NormalizedRecord(
+        id=uuid4(),
+        indicator=indicator,
+        value=value,
+        unit="kg CO₂/tonne",
+        original_value=value,
+        original_unit="kg CO₂/tonne"
+    )
+    
+    results = validation_engine.validate_record(record, industry)
+    
+    if expected_valid:
+        assert len(results) == 0, f"{industry} value {value} should pass validation"
+    else:
+        assert len(results) > 0, f"{industry} value {value} should fail validation"
+        assert results[0].is_valid is False
+        assert results[0].severity == "error"
+
+
+@pytest.mark.parametrize("monthly_sum,annual_total,should_pass", [
+    (12000.0, 12000.0, True),  # Exact match
+    (11990.0, 12000.0, True),  # Within 2% tolerance
+    (12200.0, 12000.0, True),  # Within 2% tolerance
+    (11700.0, 12000.0, False),  # Outside 2% tolerance (2.5%)
+    (13000.0, 12000.0, False),  # Outside 2% tolerance (8.3%)
+    (10000.0, 12000.0, False),  # Large difference (16.7%)
+])
+def test_temporal_consistency_parametrized(validation_engine, monthly_sum, annual_total, should_pass):
+    """Parametrized temporal consistency tests"""
+    # Create monthly data that sums to monthly_sum
+    monthly_value = monthly_sum / 12
+    monthly_data = {
+        month: monthly_value 
+        for month in ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    }
+    
+    rule = None
+    for r in validation_engine.rules["cross_industry"].values():
+        if r.rule_name == "monthly_sum_equals_annual":
+            rule = r
+            break
+    
+    assert rule is not None
+    result = validation_engine.temporal_consistency(
+        monthly_data,
+        annual_total,
+        rule,
+        uuid4()
+    )
+    
+    if should_pass:
+        assert result is None, f"Monthly sum {monthly_sum} should match annual {annual_total} within tolerance"
+    else:
+        assert result is not None, f"Monthly sum {monthly_sum} should not match annual {annual_total}"
+        assert result.is_valid is False
+
+
+# ============================================================================
+# INTEGRATION TESTS
+# ============================================================================
+
+class TestValidationIntegration:
+    """Integration tests for validation service end-to-end"""
+    
+    @pytest.mark.integration
+    def test_validation_service_end_to_end(self, validation_engine):
+        """End-to-end validation test with known errors - Prompt 31 Test #11"""
+        # Create dataset with known errors
+        records = [
+            # Valid cement record
+            NormalizedRecord(
+                id=uuid4(),
+                indicator="Scope 1 GHG Emissions per tonne clinker",
+                value=950.0,
+                unit="kg CO₂/tonne",
+                original_value=950.0,
+                original_unit="kg CO₂/tonne"
+            ),
+            # Invalid cement record (too high)
+            NormalizedRecord(
+                id=uuid4(),
+                indicator="Scope 1 GHG Emissions per tonne clinker",
+                value=1500.0,
+                unit="kg CO₂/tonne",
+                original_value=1500.0,
+                original_unit="kg CO₂/tonne"
+            ),
+            # Invalid cement record (too low)
+            NormalizedRecord(
+                id=uuid4(),
+                indicator="Scope 1 GHG Emissions per tonne clinker",
+                value=500.0,
+                unit="kg CO₂/tonne",
+                original_value=500.0,
+                original_unit="kg CO₂/tonne"
+            ),
+        ]
+        
+        # Run batch validation
+        results = validation_engine.validate_batch(records, "cement_industry")
+        
+        # Assert errors detected correctly
+        assert len(results) == 2, "Should detect 2 errors (too high and too low)"
+        
+        # Verify error details
+        all_errors = []
+        for record_results in results.values():
+            all_errors.extend(record_results)
+        
+        assert len(all_errors) == 2
+        assert all(err.rule_name == "cement_emission_range" for err in all_errors)
+        assert all(err.severity == "error" for err in all_errors)
+    
+    @pytest.mark.integration
+    def test_validation_report_generation(self, validation_engine):
+        """Test validation report generation - Prompt 31 Test #12"""
+        # Create mixed dataset
+        records = [
+            NormalizedRecord(id=uuid4(), indicator="test", value=950.0, 
+                           unit="kg CO₂/tonne", original_value=950.0, original_unit="kg CO₂/tonne")
+            for _ in range(8)  # 8 valid records
+        ] + [
+            NormalizedRecord(id=uuid4(), indicator="Scope 1 GHG Emissions per tonne clinker", 
+                           value=1500.0, unit="kg CO₂/tonne", 
+                           original_value=1500.0, original_unit="kg CO₂/tonne")
+            for _ in range(2)  # 2 invalid records
+        ]
+        
+        results = validation_engine.validate_batch(records, "cement_industry")
+        
+        # Calculate summary statistics
+        total_records = len(records)
+        records_with_errors = len(results)
+        pass_rate = ((total_records - records_with_errors) / total_records) * 100
+        
+        # Assert summary correct
+        assert total_records == 10
+        assert records_with_errors == 2
+        assert pass_rate == 80.0, "Should have 80% pass rate (8/10)"
+
+
+# ============================================================================
+# API INTEGRATION TESTS
+# ============================================================================
+
+@pytest.mark.api
+class TestValidationAPI:
+    """API endpoint tests"""
+    
+    @pytest.mark.integration
+    @patch('src.api.validation.validation_engine')
+    @patch('src.api.validation.get_validation_service')
+    def test_validation_endpoint(self, mock_get_service, mock_engine):
+        """Test validation API endpoint - Prompt 31 Test #13"""
+        from fastapi.testclient import TestClient
+        from src.main import app
+        
+        upload_id = uuid4()
+        
+        # Mock service response
+        mock_service = Mock()
+        mock_service.validate_upload.return_value = Mock(
+            total_records=100,
+            valid_records=85,
+            records_with_errors=10,
+            records_with_warnings=5,
+            validation_pass_rate=90.0,
+            error_breakdown={"test_rule": 10},
+            warning_breakdown={"test_warning": 5}
+        )
+        mock_get_service.return_value = mock_service
+        
+        client = TestClient(app)
+        response = client.post(
+            f"/api/v1/validation/process/{upload_id}",
+            params={"industry": "cement_industry"}
+        )
+        
+        # Assert 200 response
+        assert response.status_code == 200
+        
+        # Assert ValidationSummary returned
+        data = response.json()
+        assert "total_records" in data
+        assert "validation_pass_rate" in data
+        assert data["total_records"] == 100
+        assert data["validation_pass_rate"] == 90.0
+    
+    @pytest.mark.integration
+    @patch('src.api.validation.validation_engine')
+    @patch('src.api.validation.get_validation_service')
+    def test_error_review_workflow(self, mock_get_service, mock_engine):
+        """Test error review workflow - Prompt 31 Test #14"""
+        from fastapi.testclient import TestClient
+        from src.main import app
+        
+        result_id = uuid4()
+        upload_id = uuid4()
+        
+        # Mock service
+        mock_service = Mock()
+        mock_service.mark_error_as_reviewed.return_value = None
+        mock_service.get_unreviewed_errors.side_effect = [
+            [{"id": str(result_id), "message": "Error"}],  # Before review
+            []  # After review
+        ]
+        mock_get_service.return_value = mock_service
+        
+        client = TestClient(app)
+        
+        # Step 1: Get unreviewed errors (should have 1)
+        response = client.get(f"/api/v1/validation/unreviewed/{upload_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["unreviewed_count"] == 1
+        
+        # Step 2: Mark error as reviewed
+        response = client.post(
+            "/api/v1/validation/review/mark-reviewed",
+            json={
+                "result_id": str(result_id),
+                "reviewer": "test@example.com",
+                "notes": "False positive"
+            }
+        )
+        assert response.status_code == 200
+        
+        # Step 3: Get unreviewed errors again (should be empty)
+        response = client.get(f"/api/v1/validation/unreviewed/{upload_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["unreviewed_count"] == 0, "Error should disappear from unreviewed list"

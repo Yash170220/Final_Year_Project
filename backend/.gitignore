@@ -67,3 +67,16 @@ data/uploads/*
 
 # Docker
 docker-installer-error-*.log
+poetry-installer-error-*.log
+
+# Documentation (analysis files only - keep essential docs)
+docs/FILE_ANALYSIS.md
+
+# Generated test data (can be regenerated with scripts/generate_test_data.py)
+data/sample-inputs/*.xlsx
+data/sample-inputs/*.csv
+!data/sample-inputs/.gitkeep
+
+# Alembic migrations (generated)
+alembic/versions/*.py
+!alembic/versions/.gitkeep
