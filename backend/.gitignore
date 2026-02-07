@@ -59,7 +59,7 @@ Thumbs.db
 # Uploads (runtime data only)
 data/uploads/*
 !data/uploads/.gitkeep
-api-normalization.md
+
 # Temporary files
 *.tmp
 *.bak
