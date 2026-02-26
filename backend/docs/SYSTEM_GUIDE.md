@@ -16,237 +16,197 @@ Upload File → Ingest → Match → Normalize → Validate → (Generate Report
 
 ---
 
-## Core Modules
+## API Endpoints (11 total)
 
-### 1. **Ingestion** (`src/ingestion/`)
-**What it does:** Reads Excel, CSV, and PDF files and extracts data.
+### Base URL: `http://localhost:8000`
 
-**Files:**
-- `csv_parser.py` - Parses CSV files
-- `excel_parser.py` - Parses Excel (.xlsx) files  
-- `base_parser.py` - Common parser logic
-- `service.py` - Orchestrates parsing
+All endpoints follow a consistent pattern: **POST** to trigger processing, **GET** to retrieve results.
 
-**Example:**
-```python
-from src.ingestion import IngestionService
-service = IngestionService()
-result = service.ingest_file("cement_plant.xlsx")
-# Output: ParsedData with rows, headers, metadata
+#### Health
 ```
+GET  /              → {"status": "running"}
+GET  /health        → Health check
+```
+
+#### Ingestion (3 endpoints)
+```
+POST   /api/v1/ingest/upload              → Upload a file
+GET    /api/v1/ingest/{upload_id}         → Status + headers + preview (first 10 rows)
+DELETE /api/v1/ingest/{upload_id}         → Soft-delete upload
+```
+
+#### Matching (2 endpoints)
+```
+POST /api/v1/matching/{upload_id}         → Trigger matching (empty body)
+                                            OR save reviews (body with reviews list)
+GET  /api/v1/matching/{upload_id}         → Stats + all results + review queue
+```
+
+#### Normalization (2 endpoints)
+```
+POST /api/v1/normalization/{upload_id}    → Trigger normalization
+GET  /api/v1/normalization/{upload_id}    → Summary + conversions + errors + data sample
+                                            Supports ?limit=100&offset=0
+```
+
+#### Validation (2 endpoints)
+```
+POST /api/v1/validation/{upload_id}?industry=cement_industry
+                                          → Run validation (empty body)
+                                            OR save reviews (body with reviews list)
+GET  /api/v1/validation/{upload_id}       → Summary + breakdowns + all errors + all warnings
+```
+
+**Interactive docs:** `http://localhost:8000/docs`
 
 ---
 
-### 2. **Matching** (`src/matching/`)
-**What it does:** Maps uploaded column names to standard ESG indicators.
+## Core Modules
+
+### 1. Ingestion (`src/ingestion/`)
+Reads Excel, CSV files and extracts data.
 
 **Files:**
-- `rule_matcher.py` - Fast fuzzy string matching (90% accuracy)
-- `llm_matcher.py` - AI-powered matching for complex cases
-- `service.py` - Combines rule and LLM matching
+- `csv_parser.py` - Parses CSV (auto-detects delimiter, encoding)
+- `excel_parser.py` - Parses Excel (.xlsx), handles merged cells, multi-sheet
+- `base_parser.py` - Common parser interface
+- `service.py` - Orchestrates parsing, saves to DB, generates preview
 
-**Example:**
-```python
-from src.matching import MatchingService
-matches = service.match_indicators("CO2 Emmissions")
-# Output: {original: "CO2 Emmissions", matched: "CO2 Emissions", confidence: 0.95}
-```
+**Key service methods:**
+- `ingest_file_from_upload()` - Full upload flow (parse → save → preview)
+- `get_upload_details()` - Returns status + metadata + headers + preview rows
+
+---
+
+### 2. Matching (`src/matching/`)
+Maps uploaded column names to standard ESG indicators.
+
+**Files:**
+- `rule_matcher.py` - Fast fuzzy string matching (~90% accuracy)
+- `llm_matcher.py` - Groq LLM fallback for ambiguous headers
+- `service.py` - Two-tier matching + review workflow
+
+**Key service methods:**
+- `match_headers()` - Match all headers for an upload
+- `get_comprehensive_results()` - Stats + results + review queue in one call
+- `approve_match()` - Accept or correct a match
+- `get_best_match()` - Rule-first, then LLM fallback
 
 **How it works:**
 1. Rule matcher tries fuzzy match first (fast)
-2. If confidence < 70%, uses LLM (accurate but slower)
-3. Returns matched indicator with confidence score
+2. If confidence < 80%, falls back to LLM
+3. Items with confidence < 85% go to review queue
 
 ---
 
-### 3. **Normalization** (`src/normalization/`)
-**What it does:** Converts all units to standard formats (e.g., kg → tonnes).
+### 3. Normalization (`src/normalization/`)
+Converts all units to standard formats (e.g., kWh → MWh, kg → tonnes).
 
 **Files:**
-- `normalizer.py` - Unit conversion logic
-- `service.py` - Database integration
+- `normalizer.py` - Unit conversion logic with factor lookup
+- `service.py` - DB integration, unit detection from context
 
-**Example:**
-```python
-from src.normalization import Normalizer
-result = normalizer.normalize_value(1500, "kg CO₂", "Scope 1 Emissions")
-# Output: {value: 1.5, unit: "tonnes CO₂", factor: 0.001}
-```
+**Key service methods:**
+- `normalize_data()` - Normalize all indicators for an upload
+- `get_comprehensive_results()` - Summary + conversions + errors + data sample
+- `detect_unit_from_context()` - Infers unit from header text and value magnitudes
 
-**Conversion rules:** In `data/validation-rules/conversion_factors.json`
+**Conversion rules:** `data/validation-rules/conversion_factors.json`
 
 ---
 
-### 4. **Validation** (`src/validation/`)
-**What it does:** Checks data quality using 28 industry-specific rules.
+### 4. Validation (`src/validation/`)
+Checks data quality using 29 industry-specific rules.
 
 **Files:**
-- `engine.py` - Validation logic (range checks, outliers, cross-field)
-- `service.py` - Database integration and review workflow
+- `engine.py` - Core validation logic (range, outlier, cross-field, temporal)
+- `service.py` - DB integration, review workflow, comprehensive results
 
-**Example:**
-```python
-from src.validation import ValidationEngine
-engine = ValidationEngine("validation_rules.json")
-results = engine.validate_record(record, "cement_industry")
-# Output: [] if valid, [ValidationResult] if errors found
-```
+**Key service methods:**
+- `validate_upload()` - Run all validations for an upload
+- `get_comprehensive_results()` - Summary + breakdowns + errors + warnings
+- `mark_error_as_reviewed()` - Mark false positives
+- `calculate_final_pass_rate()` - Pass rate after reviews
 
 **Validation types:**
-- Range checks (e.g., cement emissions: 800-1100 kg CO₂/tonne)
+- Range checks (e.g., cement emissions: 800-1100 kg CO2/tonne)
 - Outlier detection (statistical z-score)
 - Cross-field (e.g., Scope 1 + 2 + 3 = Total)
 - Temporal consistency (monthly sums match annual)
+- Category checks, null checks, precision checks
 
-**Rules:** In `data/validation-rules/validation_rules.json`
+**Rules:** `data/validation-rules/validation_rules.json`
 
 ---
 
-### 5. **Generation** (`src/generation/`)
+### 5. Generation (`src/generation/`)
 **Status:** Not yet implemented (placeholder for RAG narrative generation).
 
 ---
 
-## API Endpoints
+## Shared Code (`src/common/`)
 
-### Base URL: `http://localhost:8000`
-
-#### **Ingestion**
-```bash
-POST /api/v1/ingest
-# Upload and parse files
-```
-
-#### **Matching**
-```bash
-POST /api/v1/matching/match-headers
-# Match column names to indicators
-```
-
-#### **Normalization**
-```bash
-POST /api/v1/normalization/normalize
-# Convert units to standard format
-```
-
-#### **Validation**
-```bash
-POST /api/v1/validation/process/{upload_id}?industry=cement_industry
-# Validate data quality
-
-GET /api/v1/validation/report/{upload_id}
-# Get comprehensive report
-
-GET /api/v1/validation/errors/{upload_id}
-# Get errors with suggested fixes
-
-POST /api/v1/validation/review/mark-reviewed
-# Mark false positives as reviewed
-```
-
-**Full API docs:** `http://localhost:8000/docs` (when server running)
+- `config.py` - Pydantic settings (database, redis, groq, app config)
+- `database.py` - SQLAlchemy engine and session management
+- `models.py` - Database models (Upload, MatchedIndicator, NormalizedData, ValidationResult, AuditLog)
+- `schemas.py` - Pydantic request/response schemas for all endpoints
 
 ---
 
 ## Database Schema
 
 **Tables:**
-- `uploads` - Uploaded files metadata
-- `matched_indicators` - Column → indicator mappings
-- `normalized_data` - Converted data with units
-- `validation_results` - Quality check results
-- `audit_log` - All changes tracked
+- `uploads` - File metadata (filename, type, status, file_metadata JSON)
+- `matched_indicators` - Column → indicator mappings with confidence
+- `normalized_data` - Converted values with units and conversion factors
+- `validation_results` - Quality check results (pass/fail, severity, message)
+- `audit_log` - All changes tracked for provenance
 
 **Relationships:**
 ```
 uploads → matched_indicators → normalized_data → validation_results
+   ↓
+audit_log (tracks all entities)
 ```
 
 ---
 
 ## Data Flow Example
 
-**Input File (cement_plant.xlsx):**
+**Input File (cement_plant.csv):**
 ```
 | Plant | CO2 Emmissions | Energy Used |
 |-------|---------------|-------------|
 | A     | 1500 kg       | 4.2 GJ      |
 ```
 
-**Step 1: Ingestion**
+**Step 1: Ingest** → `POST /api/v1/ingest/upload`
+```json
+{"upload_id": "uuid", "filename": "cement_plant.csv", "status": "completed", "detected_headers": ["Plant", "CO2 Emmissions", "Energy Used"]}
+```
+
+**Step 2: Match** → `POST /api/v1/matching/{upload_id}`
+```json
+{"status": "completed", "processed_count": 3}
+```
+
+**Step 3: Normalize** → `POST /api/v1/normalization/{upload_id}`
+```json
+{"status": "completed", "processed_count": 2}
+```
+
+**Step 4: Validate** → `POST /api/v1/validation/{upload_id}?industry=cement_industry`
+```json
+{"status": "completed", "errors_found": 1, "warnings_found": 0}
+```
+
+**View results** → `GET /api/v1/validation/{upload_id}`
 ```json
 {
-  "rows": [{"Plant": "A", "CO2 Emmissions": "1500 kg", "Energy Used": "4.2 GJ"}],
-  "headers": ["Plant", "CO2 Emmissions", "Energy Used"]
+  "summary": {"total_records": 2, "records_with_errors": 1, "validation_pass_rate": 50.0},
+  "errors": [{"rule_name": "cement_emission_range", "message": "Value 1500 outside range (800-1100)"}]
 }
 ```
-
-**Step 2: Matching**
-```json
-{
-  "CO2 Emmissions": {
-    "matched": "Scope 1 GHG Emissions per tonne clinker",
-    "confidence": 0.92,
-    "method": "rule"
-  }
-}
-```
-
-**Step 3: Normalization**
-```json
-{
-  "original_value": 1500,
-  "original_unit": "kg",
-  "normalized_value": 1.5,
-  "normalized_unit": "tonnes",
-  "conversion_factor": 0.001
-}
-```
-
-**Step 4: Validation**
-```json
-{
-  "is_valid": false,
-  "rule": "cement_emission_range",
-  "message": "Value 1500 kg CO₂/tonne outside range (800-1100)",
-  "severity": "error",
-  "suggested_fixes": [
-    "Check if value should be in tonnes instead of kg"
-  ]
-}
-```
-
----
-
-## Key Configuration Files
-
-### `pyproject.toml`
-Dependencies and project metadata. Use Poetry:
-```bash
-poetry install
-```
-
-### `.env.example`
-Environment variables template. Copy to `.env`:
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
-
-### `docker-compose.yml`
-PostgreSQL and Redis services:
-```bash
-docker-compose up -d
-```
-
-### `data/validation-rules/validation_rules.json`
-28 validation rules for cement, steel, automotive industries.
-
-### `data/validation-rules/conversion_factors.json`
-Unit conversion mappings (kg→tonnes, MWh→GJ, etc).
-
-### `data/validation-rules/synonym_dictionary.json`
-Column name variations (e.g., "CO2" = "Carbon Dioxide").
 
 ---
 
@@ -254,162 +214,89 @@ Column name variations (e.g., "CO2" = "Carbon Dioxide").
 
 ### 1. Setup
 ```bash
-# Install dependencies
 poetry install
-
-# Start database services
-docker-compose up -d
-
-# Run migrations
-poetry run alembic upgrade head
-
-# Copy environment file
 cp .env.example .env
 ```
 
-### 2. Start Server
+### 2. Start Database
+```bash
+# Option A: Docker
+docker-compose up -d
+poetry run alembic upgrade head
+
+# Option B: Local PostgreSQL (Homebrew)
+brew install postgresql@16
+brew services start postgresql@16
+/opt/homebrew/opt/postgresql@16/bin/createuser esg_user -P   # password: esg_password
+/opt/homebrew/opt/postgresql@16/bin/createdb esg_db -O esg_user
+# Then create tables:
+poetry run python -c "from src.common.database import engine; from src.common.models import Base; Base.metadata.create_all(bind=engine)"
+```
+
+### 3. Start Server
 ```bash
 poetry run uvicorn src.main:app --reload
 ```
 
-### 3. Test API
-```bash
-# Open browser
-http://localhost:8000/docs
-
-# Or use curl
-curl -X POST "http://localhost:8000/api/v1/ingest" -F "file=@data.xlsx"
-```
+### 4. Test
+Open `http://localhost:8000/docs` in your browser.
 
 ---
 
 ## Testing
 
-### Run all tests
 ```bash
+# Run all tests
 poetry run pytest
-```
 
-### Run specific module
-```bash
+# Specific module
 poetry run pytest tests/test_validation.py -v
-```
 
-### With coverage
-```bash
+# With coverage
 poetry run pytest --cov=src --cov-report=html
 ```
 
-### Test files:
-- `test_ingestion.py` - File parsing tests
-- `test_matching_service.py` - Indicator matching tests
-- `test_normalization_service.py` - Unit conversion tests
-- `test_validation.py` - Quality checks (60+ tests)
-- `test_validation_service.py` - Database integration tests
+**Test files:**
+- `test_ingestion.py` - File parsing + API endpoint tests
+- `test_rule_matcher.py` - Fuzzy matching tests
+- `test_llm_matcher.py` - LLM matching tests
+- `test_matching_service.py` - Matching service + comprehensive results tests
+- `test_normalizer.py` - Unit conversion tests
+- `test_normalization_service.py` - Normalization service tests
+- `test_validation.py` - Engine validation tests (rules, cross-field, integration)
+- `test_validation_service.py` - Validation service + review workflow tests
 
 ---
 
-## Validation Review Workflow
+## Key Configuration Files
 
-### 1. Run validation
-```bash
-POST /api/v1/validation/process/{upload_id}?industry=cement_industry
-```
-
-### 2. Review errors
-```bash
-GET /api/v1/validation/errors/{upload_id}
-# Returns: 50 errors found
-```
-
-### 3. For each error:
-
-**Option A: Fix data and re-validate**
-```bash
-# User corrects data in source file
-POST /api/v1/validation/revalidate/record/{data_id}
-```
-
-**Option B: Mark as false positive**
-```bash
-POST /api/v1/validation/review/mark-reviewed
-{
-  "result_id": "uuid",
-  "reviewer": "john@example.com",
-  "notes": "Value is correct for this special case"
-}
-```
-
-### 4. Check export readiness
-```bash
-GET /api/v1/validation/review-summary/{upload_id}
-# Returns: {"ready_for_export": true, "unreviewed_errors": 0}
-```
-
-### 5. Export blocked until:
-- All errors are either corrected OR marked as reviewed
-- Warnings don't block export
-
----
-
-## Common Issues & Solutions
-
-### Issue: Parser fails on Excel file
-**Solution:** Check file format is `.xlsx` (not `.xls`)
-
-### Issue: Matching confidence too low
-**Solution:** Add synonyms to `synonym_dictionary.json`
-
-### Issue: Validation fails for correct data
-**Solution:** Mark as reviewed with explanation
-
-### Issue: Unit conversion wrong
-**Solution:** Check `conversion_factors.json` for correct factor
-
----
-
-## Project Structure Summary
-
-```
-backend/
-├── src/                    # Source code
-│   ├── ingestion/         # File parsing (Excel, CSV, PDF)
-│   ├── matching/          # Column → indicator mapping
-│   ├── normalization/     # Unit conversions
-│   ├── validation/        # Quality checks
-│   ├── api/              # FastAPI endpoints
-│   ├── common/           # Shared code (models, database)
-│   └── main.py           # Application entry point
-├── data/                  # Configuration files
-│   ├── validation-rules/ # Validation and conversion rules
-│   └── sample-inputs/    # Test data files
-├── tests/                # Test suite (pytest)
-├── docs/                 # Documentation
-│   ├── prd.md           # Product requirements
-│   └── SYSTEM_GUIDE.md  # This file
-├── pyproject.toml        # Dependencies
-├── docker-compose.yml    # Database services
-└── .env.example         # Environment template
-```
+| File | Purpose |
+|------|---------|
+| `pyproject.toml` | Dependencies (Poetry) |
+| `.env` / `.env.example` | Environment variables (DB, Redis, Groq API) |
+| `docker-compose.yml` | PostgreSQL + Redis services |
+| `data/validation-rules/validation_rules.json` | 29 validation rules |
+| `data/validation-rules/conversion_factors.json` | Unit conversion mappings |
+| `data/validation-rules/synonym_dictionary.json` | Column name synonyms |
 
 ---
 
 ## Industry Rules Coverage
 
 ### Cement Industry (3 rules)
-- Emission intensity: 800-1,100 kg CO₂/tonne clinker
+- Emission intensity: 800-1,100 kg CO2/tonne clinker
 - Energy intensity: 2.9-4.5 GJ/tonne clinker
 - Clinker ratio: 0.65-0.95
 
 ### Steel Industry (3 rules)
-- BF-BOF emissions: 1,800-2,500 kg CO₂/tonne
-- EAF emissions: 400-600 kg CO₂/tonne
+- BF-BOF emissions: 1,800-2,500 kg CO2/tonne
+- EAF emissions: 400-600 kg CO2/tonne
 - Energy intensity: 18-25 GJ/tonne
 
 ### Automotive Industry (3 rules)
-- Manufacturing emissions: 4-12 tonnes CO₂e/vehicle
+- Manufacturing emissions: 4-12 tonnes CO2e/vehicle
 - VOC emissions: 10-35 kg/vehicle
-- Water consumption: 3-8 m³/vehicle
+- Water consumption: 3-8 m3/vehicle
 
 ### Cross-Industry (8 rules)
 - Scope totals consistency
@@ -417,74 +304,87 @@ backend/
 - Outlier detection
 - Unit format validation
 - Negative value checks
-- Biogenic carbon accounting
-- Facility boundaries
-- Emission factor currency
+- Biogenic carbon, facility boundaries, emission factors
+
+### Cross-Field (8 rules)
+- Scope 1+2+3 = Total emissions
+- Energy balance
+- Production-energy correlation
+- Waste material balance
+- Water withdrawal vs discharge
+- Renewable/total energy ratio
 
 ---
 
-## Performance Metrics
+## Validation Review Workflow
 
-- **Parsing speed:** ~1000 rows/second
-- **Matching accuracy:** 90% (rule) + 95% (LLM fallback)
-- **Validation throughput:** ~1000 records/second
-- **Test coverage:** >85% for validation module
+1. **Run validation:** `POST /api/v1/validation/{upload_id}?industry=cement_industry`
+2. **View results:** `GET /api/v1/validation/{upload_id}` → see all errors/warnings
+3. **Review errors:** `POST /api/v1/validation/{upload_id}` with body:
+   ```json
+   {"reviews": [{"result_id": "uuid", "reviewed": true, "notes": "False positive"}]}
+   ```
+4. **Check status:** `GET /api/v1/validation/{upload_id}` → `summary.unreviewed_errors` should be 0
+5. Export is unblocked when all errors are reviewed or corrected
 
 ---
 
-## Future Enhancements (Not Yet Implemented)
+## Project Structure
 
-1. **Generation Module** - RAG-based narrative generation
-2. **Frontend UI** - Web interface for data upload and review
-3. **Real-time monitoring** - Dashboard with validation metrics
-4. **Advanced analytics** - Trend analysis and predictions
-5. **Multi-language support** - Internationalization
+```
+backend/
+├── src/
+│   ├── api/               # FastAPI endpoint files
+│   │   ├── ingestion.py   # 3 endpoints (upload, get details, delete)
+│   │   ├── matching.py    # 2 endpoints (process/review, get results)
+│   │   ├── normalization.py # 2 endpoints (process, get results)
+│   │   └── validation.py  # 2 endpoints (process/review, get results)
+│   ├── ingestion/         # File parsing (Excel, CSV)
+│   ├── matching/          # Column → indicator mapping
+│   ├── normalization/     # Unit conversions
+│   ├── validation/        # Quality checks (29 rules)
+│   ├── generation/        # Placeholder for RAG
+│   ├── common/            # Shared (models, schemas, config, database)
+│   └── main.py            # App entry point
+├── data/
+│   └── validation-rules/  # Rules, conversions, synonyms (JSON)
+├── tests/                 # pytest suite
+├── docs/
+│   ├── prd.md             # Product requirements
+│   └── SYSTEM_GUIDE.md    # This file
+├── pyproject.toml
+├── docker-compose.yml
+└── .env.example
+```
 
 ---
 
 ## Quick Reference
 
-### Most Used Commands
 ```bash
-# Start everything
-docker-compose up -d && poetry run uvicorn src.main:app --reload
+# Start server
+poetry run uvicorn src.main:app --reload
 
-# Run tests
-poetry run pytest -v
+# Full pipeline (curl)
+# 1. Upload
+curl -X POST http://localhost:8000/api/v1/ingest/upload \
+  -F "file=@data.csv" -F "facility_name=Plant A" -F "reporting_period=2024-01"
 
-# Check coverage
-poetry run pytest --cov=src
+# 2. Match (use upload_id from step 1)
+curl -X POST http://localhost:8000/api/v1/matching/{upload_id}
 
-# Format code
-poetry run black src/ tests/
+# 3. Normalize
+curl -X POST http://localhost:8000/api/v1/normalization/{upload_id}
 
-# Lint code
-poetry run ruff check src/ tests/
-```
+# 4. Validate
+curl -X POST "http://localhost:8000/api/v1/validation/{upload_id}?industry=cement_industry"
 
-### Most Used API Calls
-```bash
-# Upload file
-curl -X POST "http://localhost:8000/api/v1/ingest" -F "file=@data.xlsx"
-
-# Validate upload
-curl -X POST "http://localhost:8000/api/v1/validation/process/{id}?industry=cement_industry"
-
-# Get report
-curl "http://localhost:8000/api/v1/validation/report/{id}"
+# 5. View results
+curl http://localhost:8000/api/v1/validation/{upload_id}
 ```
 
 ---
 
-## Support & Documentation
-
-- **API Docs:** http://localhost:8000/docs (interactive)
-- **Product Requirements:** `docs/prd.md`
-- **This Guide:** `docs/SYSTEM_GUIDE.md`
-- **Test Examples:** `tests/` folder
-
----
-
-**Last Updated:** 2026-02-07
+**Last Updated:** 2026-02-21
 **System Version:** 0.1.0
-**Status:** Core modules complete, generation module pending
+**Status:** Core modules complete (ingest, match, normalize, validate). Generation module pending.

@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.12,<3.13"
 # Core Framework
 fastapi = "^0.115.0"
 uvicorn = "^0.30.0"

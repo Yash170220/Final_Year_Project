@@ -80,9 +80,10 @@ class ValidationService:
         # Convert to NormalizedRecord objects for validation
         validation_records = []
         for record in normalized_records:
+            indicator_name = record.indicator.matched_indicator if record.indicator else str(record.indicator_id)
             validation_record = NormalizedRecord(
                 id=record.id,
-                indicator=record.indicator_id,  # Will need to resolve indicator name
+                indicator=indicator_name,
                 value=record.normalized_value,
                 unit=record.normalized_unit,
                 original_value=record.original_value,
@@ -521,10 +522,10 @@ class ValidationService:
         if not record:
             raise ValueError(f"Record {data_id} not found")
         
-        # Convert to validation record
+        indicator_name = record.indicator.matched_indicator if record.indicator else str(record.indicator_id)
         validation_record = NormalizedRecord(
             id=record.id,
-            indicator=record.indicator_id,
+            indicator=indicator_name,
             value=record.normalized_value,
             unit=record.normalized_unit,
             original_value=record.original_value,
@@ -799,6 +800,108 @@ class ValidationService:
         
         return count
     
+    def get_comprehensive_results(self, upload_id: UUID) -> Optional[Dict[str, Any]]:
+        """Get all validation data for an upload in one call."""
+        upload = self.db.query(Upload).filter(Upload.id == upload_id).first()
+        if not upload:
+            return None
+
+        normalized_count = self.db.query(NormalizedData).filter(
+            NormalizedData.upload_id == upload_id
+        ).count()
+
+        all_results = self.db.query(DBValidationResult).join(
+            NormalizedData, DBValidationResult.data_id == NormalizedData.id
+        ).filter(
+            NormalizedData.upload_id == upload_id
+        ).all()
+
+        records_with_errors: set = set()
+        records_with_warnings: set = set()
+        error_breakdown: Dict[str, int] = defaultdict(int)
+        warning_breakdown: Dict[str, int] = defaultdict(int)
+        errors_list = []
+        warnings_list = []
+        unreviewed_errors = 0
+
+        for r in all_results:
+            if r.is_valid:
+                continue
+            reviewed = getattr(r, "reviewed", False) or False
+            notes = getattr(r, "reviewer_notes", None)
+
+            rule = self._lookup_rule(r.rule_name)
+            suggested_fixes = rule.suggested_fixes if rule else []
+            citation = r.citation or (rule.citation if rule else "")
+
+            if r.severity == Severity.ERROR:
+                records_with_errors.add(r.data_id)
+                error_breakdown[r.rule_name] += 1
+                if not reviewed:
+                    unreviewed_errors += 1
+                errors_list.append({
+                    "result_id": r.id,
+                    "indicator": r.rule_name,
+                    "rule_name": r.rule_name,
+                    "severity": "error",
+                    "message": r.message,
+                    "actual_value": None,
+                    "expected_range": None,
+                    "citation": citation,
+                    "suggested_fixes": suggested_fixes,
+                    "reviewed": reviewed,
+                    "reviewer_notes": notes,
+                })
+            else:
+                records_with_warnings.add(r.data_id)
+                warning_breakdown[r.rule_name] += 1
+                warnings_list.append({
+                    "result_id": r.id,
+                    "rule_name": r.rule_name,
+                    "severity": "warning",
+                    "message": r.message,
+                    "reviewed": reviewed,
+                })
+
+        valid_records = normalized_count - len(records_with_errors.union(records_with_warnings))
+        pass_rate = (
+            ((normalized_count - len(records_with_errors)) / normalized_count * 100)
+            if normalized_count > 0 else 100.0
+        )
+
+        status = "completed" if len(all_results) > 0 or normalized_count > 0 else "pending"
+
+        industry = None
+        meta = upload.file_metadata or {}
+        if "industry" in meta:
+            industry = meta["industry"]
+
+        return {
+            "upload_id": upload_id,
+            "status": status,
+            "industry": industry,
+            "summary": {
+                "total_records": normalized_count,
+                "valid_records": max(valid_records, 0),
+                "records_with_errors": len(records_with_errors),
+                "records_with_warnings": len(records_with_warnings),
+                "validation_pass_rate": round(pass_rate, 4),
+                "unreviewed_errors": unreviewed_errors,
+            },
+            "error_breakdown": dict(error_breakdown),
+            "warning_breakdown": dict(warning_breakdown),
+            "errors": errors_list,
+            "warnings": warnings_list,
+        }
+
+    def _lookup_rule(self, rule_name: str):
+        """Find a rule object by name across all industries."""
+        for industry_rules in self.engine.rules.values():
+            for rule in industry_rules.values():
+                if rule.rule_name == rule_name:
+                    return rule
+        return None
+
     def get_reviewed_items(self, upload_id: UUID) -> Dict[str, List[Dict[str, Any]]]:
         """
         Get all reviewed items (errors and suppressed warnings)

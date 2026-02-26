@@ -86,7 +86,7 @@ class NormalizationService:
             self.db.query(MatchedIndicator)
             .filter(
                 MatchedIndicator.upload_id == upload_id,
-                MatchedIndicator.approved.is_(True)
+                MatchedIndicator.reviewed.is_(True)
             )
             .all()
         )
@@ -94,8 +94,16 @@ class NormalizationService:
         if not matched_indicators:
             raise NormalizationError(f"No approved indicators found for upload {upload_id}")
 
-        # Load uploaded data
-        data_df = pl.read_parquet(upload.file_path)
+        # Load uploaded data based on file type
+        file_path = upload.file_path
+        if file_path.endswith(".csv"):
+            data_df = pl.read_csv(file_path)
+        elif file_path.endswith((".xlsx", ".xls")):
+            data_df = pl.read_excel(file_path)
+        elif file_path.endswith(".parquet"):
+            data_df = pl.read_parquet(file_path)
+        else:
+            raise NormalizationError(f"Unsupported file format: {file_path}")
 
         # Track statistics
         total_records = 0
@@ -114,24 +122,27 @@ class NormalizationService:
                 
                 try:
                     # Get column data
-                    if indicator.matched_header not in data_df.columns:
-                        error_msg = f"Column '{indicator.matched_header}' not found in data"
+                    if indicator.original_header not in data_df.columns:
+                        error_msg = f"Column '{indicator.original_header}' not found in data"
                         errors.append(error_msg)
                         logger.warning(error_msg)
                         continue
 
-                    column_data = data_df[indicator.matched_header].to_list()
+                    column_data = data_df[indicator.original_header].to_list()
                     indicator_total = len([v for v in column_data if isinstance(v, (int, float)) and v is not None])
                     
                     # Process indicator
                     records = self.process_indicator(
                         indicator.id,
-                        indicator.matched_header,
-                        indicator.canonical_indicator,
+                        indicator.original_header,
+                        indicator.matched_indicator,
                         column_data
                     )
 
-                    # Save records in transaction
+                    # Inject upload_id into record metadata for DB save
+                    for rec in records:
+                        rec.metadata["upload_id"] = upload_id
+
                     if records:
                         self.save_normalized_data(records)
                         indicator_success = len(records)
@@ -146,7 +157,7 @@ class NormalizationService:
                     total_records += indicator_total
 
                 except Exception as e:
-                    error_msg = f"Error processing {indicator.matched_header}: {str(e)}"
+                    error_msg = f"Error processing {indicator.original_header}: {str(e)}"
                     errors.append(error_msg)
                     logger.error(error_msg, exc_info=True)
                     
@@ -347,14 +358,14 @@ class NormalizationService:
         db_records = []
         for record in records:
             db_record = NormalizedData(
-                matched_indicator_id=record.matched_indicator_id,
+                upload_id=record.metadata.get("upload_id") if record.metadata else None,
+                indicator_id=record.matched_indicator_id,
                 original_value=record.original_value,
                 original_unit=record.original_unit,
                 normalized_value=record.normalized_value,
                 normalized_unit=record.normalized_unit,
-                conversion_factor=record.conversion_factor,
-                row_index=record.row_index,
-                metadata=record.metadata
+                conversion_factor=record.conversion_factor or 1.0,
+                conversion_source=record.metadata.get("conversion_source", "detected") if record.metadata else "detected",
             )
             db_records.append(db_record)
 
@@ -383,25 +394,24 @@ class NormalizationService:
         """
         # Use joinedload to avoid N+1 queries
         from sqlalchemy.orm import joinedload
-        
+
         query = (
             self.db.query(NormalizedData)
-            .join(MatchedIndicator)
-            .options(joinedload(NormalizedData.matched_indicator))
+            .join(MatchedIndicator, NormalizedData.indicator_id == MatchedIndicator.id)
+            .options(joinedload(NormalizedData.indicator))
             .filter(MatchedIndicator.upload_id == upload_id)
         )
 
         if indicator_name:
-            query = query.filter(MatchedIndicator.canonical_indicator == indicator_name)
+            query = query.filter(MatchedIndicator.matched_indicator == indicator_name)
 
         records = query.all()
 
         if not records:
             return pl.DataFrame()
 
-        # Convert to DataFrame - data already loaded via joinedload
         data = {
-            'indicator': [r.matched_indicator.canonical_indicator for r in records],
+            'indicator': [r.indicator.matched_indicator for r in records],
             'original_value': [r.original_value for r in records],
             'original_unit': [r.original_unit for r in records],
             'normalized_value': [r.normalized_value for r in records],
@@ -426,7 +436,7 @@ class NormalizationService:
             self.db.query(MatchedIndicator)
             .filter(
                 MatchedIndicator.upload_id == upload_id,
-                MatchedIndicator.approved.is_(True)
+                MatchedIndicator.reviewed.is_(True)
             )
             .all()
         )
@@ -435,16 +445,110 @@ class NormalizationService:
             # Get unique units for this indicator
             units = (
                 self.db.query(NormalizedData.original_unit)
-                .filter(NormalizedData.matched_indicator_id == indicator.id)
+                .filter(NormalizedData.indicator_id == indicator.id)
                 .distinct()
                 .all()
             )
 
             unit_list = [u[0] for u in units]
             if len(unit_list) > 1:
-                conflicts[indicator.canonical_indicator] = unit_list
+                conflicts[indicator.matched_indicator] = unit_list
 
         return conflicts
+
+    def get_comprehensive_results(
+        self,
+        upload_id: UUID,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Optional[Dict]:
+        """Get all normalization data for an upload in one call.
+
+        Returns a dict matching NormalizationResponse or None if upload missing.
+        """
+        upload = self.db.query(Upload).filter(Upload.id == upload_id).first()
+        if not upload:
+            return None
+
+        all_records = (
+            self.db.query(NormalizedData)
+            .filter(NormalizedData.upload_id == upload_id)
+            .all()
+        )
+
+        total = len(all_records)
+        failed = 0
+        status = "completed" if total > 0 else "pending"
+
+        # Build conversions map keyed by (indicator, from, to)
+        conversions_map: Dict[str, Dict] = {}
+        for r in all_records:
+            indicator_name = r.indicator.matched_indicator if r.indicator else "Unknown"
+            key = f"{indicator_name}|{r.original_unit}|{r.normalized_unit}"
+            if key not in conversions_map:
+                conversions_map[key] = {
+                    "indicator": indicator_name,
+                    "from_unit": r.original_unit,
+                    "to_unit": r.normalized_unit,
+                    "conversion_factor": r.conversion_factor,
+                    "conversion_source": r.conversion_source or "Unknown",
+                    "record_count": 0,
+                }
+            conversions_map[key]["record_count"] += 1
+
+        # Errors: matched indicators with zero normalized rows
+        matched = (
+            self.db.query(MatchedIndicator)
+            .filter(MatchedIndicator.upload_id == upload_id)
+            .all()
+        )
+        normalised_indicator_ids = {r.indicator_id for r in all_records}
+        errors = []
+        for mi in matched:
+            if mi.id not in normalised_indicator_ids:
+                failed += 1
+                errors.append({
+                    "indicator": mi.matched_indicator,
+                    "issue": "Unit not detected",
+                    "suggestion": "Add unit to header or review manually",
+                })
+
+        rate = total / (total + failed) if (total + failed) > 0 else 0.0
+
+        # Data sample (paginated)
+        sample_records = (
+            self.db.query(NormalizedData)
+            .filter(NormalizedData.upload_id == upload_id)
+            .order_by(NormalizedData.id)
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        data_sample = []
+        for r in sample_records:
+            indicator_name = r.indicator.matched_indicator if r.indicator else "Unknown"
+            data_sample.append({
+                "data_id": r.id,
+                "indicator": indicator_name,
+                "original_value": r.original_value,
+                "original_unit": r.original_unit,
+                "normalized_value": r.normalized_value,
+                "normalized_unit": r.normalized_unit,
+            })
+
+        return {
+            "upload_id": upload_id,
+            "status": status,
+            "summary": {
+                "total_records": total,
+                "successfully_normalized": total,
+                "failed_normalization": failed,
+                "normalization_rate": round(rate, 4),
+            },
+            "conversions": list(conversions_map.values()),
+            "errors": errors,
+            "data_sample": data_sample,
+        }
 
     def _create_audit_log(self, upload_id: UUID, message: str) -> None:
         """Create audit log entry.
@@ -455,10 +559,11 @@ class NormalizationService:
         """
         try:
             audit = AuditLog(
-                upload_id=upload_id,
+                entity_id=upload_id,
+                entity_type="upload",
                 action=AuditAction.NORMALIZE,
                 actor="system",
-                details={"message": message},
+                changes={"message": message},
                 timestamp=datetime.now(timezone.utc)
             )
             self.db.add(audit)

@@ -193,7 +193,7 @@ class TestIngestionService:
 
 class TestIngestionAPI:
     """Tests for ingestion API endpoints"""
-    
+
     def test_api_upload_endpoint(self, client, sample_csv_comma):
         """Test file upload endpoint"""
         with open(sample_csv_comma, 'rb') as f:
@@ -205,17 +205,17 @@ class TestIngestionAPI:
                     "reporting_period": "2024-01"
                 }
             )
-        
+
         assert response.status_code == 201
         data = response.json()
         assert "upload_id" in data
         assert data["filename"] == "test.csv"
         assert data["status"] == "completed"
-    
+
     def test_api_invalid_file_type(self, client):
         """Test upload with invalid file type"""
         file_content = b"This is a text file"
-        
+
         response = client.post(
             "/api/v1/ingest/upload",
             files={"file": ("test.txt", io.BytesIO(file_content), "text/plain")},
@@ -224,13 +224,12 @@ class TestIngestionAPI:
                 "reporting_period": "2024-01"
             }
         )
-        
+
         assert response.status_code == 400
         assert "Invalid file type" in response.json()["detail"]
-    
-    def test_api_get_status(self, client, sample_csv_comma):
-        """Test get upload status endpoint"""
-        # First upload a file
+
+    def test_api_get_upload_details(self, client, sample_csv_comma):
+        """Test consolidated GET /{upload_id} returns status + preview"""
         with open(sample_csv_comma, 'rb') as f:
             upload_response = client.post(
                 "/api/v1/ingest/upload",
@@ -240,43 +239,33 @@ class TestIngestionAPI:
                     "reporting_period": "2024-01"
                 }
             )
-        
+
         upload_id = upload_response.json()["upload_id"]
-        
-        # Get status
-        response = client.get(f"/api/v1/ingest/status/{upload_id}")
-        
+
+        response = client.get(f"/api/v1/ingest/{upload_id}")
+
         assert response.status_code == 200
         data = response.json()
         assert data["upload_id"] == upload_id
         assert data["status"] == "completed"
-    
-    def test_api_get_preview(self, client, sample_csv_comma):
-        """Test get preview endpoint"""
-        # Upload file
-        with open(sample_csv_comma, 'rb') as f:
-            upload_response = client.post(
-                "/api/v1/ingest/upload",
-                files={"file": ("test.csv", f, "text/csv")},
-                data={
-                    "facility_name": "Test Facility",
-                    "reporting_period": "2024-01"
-                }
-            )
-        
-        upload_id = upload_response.json()["upload_id"]
-        
-        # Get preview
-        response = client.get(f"/api/v1/ingest/preview/{upload_id}")
-        
-        assert response.status_code == 200
-        data = response.json()
+        assert data["filename"] == "test.csv"
+        assert "metadata" in data
+        assert data["metadata"]["row_count"] >= 1
         assert "headers" in data
-        assert "data_types" in data
-    
+        assert isinstance(data["headers"], list)
+        assert "preview" in data
+        assert isinstance(data["preview"], list)
+        assert "errors" in data
+
+    def test_api_get_upload_details_not_found(self, client):
+        """Test GET /{upload_id} returns 404 for missing upload"""
+        import uuid
+        fake_id = str(uuid.uuid4())
+        response = client.get(f"/api/v1/ingest/{fake_id}")
+        assert response.status_code == 404
+
     def test_api_delete_upload(self, client, sample_csv_comma):
         """Test delete upload endpoint"""
-        # Upload file
         with open(sample_csv_comma, 'rb') as f:
             upload_response = client.post(
                 "/api/v1/ingest/upload",
@@ -286,32 +275,10 @@ class TestIngestionAPI:
                     "reporting_period": "2024-01"
                 }
             )
-        
+
         upload_id = upload_response.json()["upload_id"]
-        
-        # Delete
+
         response = client.delete(f"/api/v1/ingest/{upload_id}")
-        
+
         assert response.status_code == 200
         assert "deleted successfully" in response.json()["message"]
-    
-    def test_api_list_uploads(self, client, sample_csv_comma):
-        """Test list uploads endpoint"""
-        # Upload a file first
-        with open(sample_csv_comma, 'rb') as f:
-            client.post(
-                "/api/v1/ingest/upload",
-                files={"file": ("test.csv", f, "text/csv")},
-                data={
-                    "facility_name": "Test Facility",
-                    "reporting_period": "2024-01"
-                }
-            )
-        
-        # List uploads
-        response = client.get("/api/v1/ingest/list")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, list)
-        assert len(data) >= 1

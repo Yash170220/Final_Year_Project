@@ -211,29 +211,78 @@ class TestReviewQueue:
 
 class TestMatchingStats:
     """Tests for matching statistics"""
-    
+
     def test_get_matching_stats(self, matching_service, mock_db):
-        """Test getting matching statistics"""
+        """Test getting matching statistics via get_matching_stats"""
         upload_id = uuid4()
-        
-        # Mock matches
-        mock_matches = []
-        for i in range(5):
-            match = Mock()
-            match.reviewed = i < 3
-            match.confidence_score = 0.8 + (i * 0.05)
-            match.matching_method.value = "rule" if i < 3 else "llm"
-            mock_matches.append(match)
-        
+
         mock_query = Mock()
         mock_query.filter.return_value = mock_query
-        mock_query.all.return_value = mock_matches
-        
+        mock_query.scalar.side_effect = [5, 3, 0.88]
+        mock_query.group_by.return_value = mock_query
+        mock_query.all.return_value = []
+
         mock_db.query.return_value = mock_query
-        
+
         stats = matching_service.get_matching_stats(upload_id)
-        
+
         assert stats["total"] == 5
         assert stats["reviewed"] == 3
         assert stats["requires_review"] == 2
-        assert "by_method" in stats
+
+
+class TestComprehensiveResults:
+    """Tests for get_comprehensive_results"""
+
+    def test_comprehensive_results(self, matching_service, mock_db):
+        """Test consolidated results include stats, results and review queue"""
+        upload_id = uuid4()
+
+        mock_high = Mock()
+        mock_high.id = uuid4()
+        mock_high.original_header = "Electricity"
+        mock_high.matched_indicator = "Total Electricity"
+        mock_high.confidence_score = 0.95
+        mock_high.reviewed = True
+        mock_high.reviewer_notes = None
+
+        mock_low = Mock()
+        mock_low.id = uuid4()
+        mock_low.original_header = "Misc Energy"
+        mock_low.matched_indicator = "Total Electricity"
+        mock_low.confidence_score = 0.72
+        mock_low.reviewed = False
+        mock_low.reviewer_notes = "Ambiguous header"
+
+        mock_query = Mock()
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.all.return_value = [mock_high, mock_low]
+        mock_db.query.return_value = mock_query
+
+        data = matching_service.get_comprehensive_results(upload_id)
+
+        assert data is not None
+        assert data["upload_id"] == upload_id
+        assert data["stats"]["total_headers"] == 2
+        assert data["stats"]["auto_approved"] == 1
+        assert data["stats"]["needs_review"] == 1
+        assert len(data["results"]) == 2
+        assert len(data["review_queue"]) == 1
+        assert data["review_queue"][0]["reasoning"] == "Ambiguous header"
+
+    def test_comprehensive_results_empty(self, matching_service, mock_db):
+        """Test returns empty stats when no matches exist"""
+        upload_id = uuid4()
+
+        mock_query = Mock()
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.all.return_value = []
+        mock_db.query.return_value = mock_query
+
+        data = matching_service.get_comprehensive_results(upload_id)
+
+        assert data["stats"]["total_headers"] == 0
+        assert data["results"] == []
+        assert data["review_queue"] == []

@@ -65,7 +65,14 @@ class IngestionService:
             # Extract metadata
             extracted_metadata = self.extract_metadata(df)
             metadata.update(extracted_metadata)
-            
+
+            # Store preview in metadata (first 10 rows, column-oriented)
+            preview_df = df.head(10)
+            metadata["preview_data"] = {
+                col: [str(v) if v is not None else None for v in preview_df[col].to_list()]
+                for col in preview_df.columns
+            }
+
             # Create upload record
             upload = Upload(
                 id=upload_id,
@@ -74,7 +81,7 @@ class IngestionService:
                 upload_time=datetime.utcnow(),
                 status=UploadStatus.COMPLETED,
                 file_path=file_path,
-                metadata=metadata
+                file_metadata=metadata
             )
             self.db.add(upload)
             
@@ -119,7 +126,7 @@ class IngestionService:
                 upload_time=datetime.utcnow(),
                 status=UploadStatus.FAILED,
                 file_path=file_path,
-                metadata={"error": str(e)}
+                file_metadata={"error": str(e)}
             )
             self.db.add(upload)
             self.db.commit()
@@ -155,8 +162,8 @@ class IngestionService:
             upload = self.db.query(Upload).filter(Upload.id == result.upload_id).first()
             if upload:
                 upload.file_path = str(final_path)
-                upload.metadata["facility_name"] = facility_name
-                upload.metadata["reporting_period"] = reporting_period
+                upload.file_metadata["facility_name"] = facility_name
+                upload.file_metadata["reporting_period"] = reporting_period
                 self.db.commit()
             
             return result
@@ -221,6 +228,59 @@ class IngestionService:
     def get_upload_status(self, upload_id: UUID) -> Optional[Upload]:
         """Get upload status by ID"""
         return self.db.query(Upload).filter(Upload.id == upload_id).first()
+
+    def get_upload_details(self, upload_id: UUID) -> Optional[Dict]:
+        """Get full upload details: status + metadata + preview combined"""
+        upload = self.db.query(Upload).filter(Upload.id == upload_id).first()
+        if not upload:
+            return None
+
+        meta = upload.file_metadata or {}
+
+        headers = meta.get("column_names", [])
+        preview_raw = meta.get("preview_data", {})
+
+        # Convert column-oriented preview {col: [vals]} into row-oriented [{col: val}]
+        preview_rows: List[Dict] = []
+        if preview_raw and headers:
+            num_rows = min(10, max((len(v) for v in preview_raw.values()), default=0))
+            for i in range(num_rows):
+                row = {}
+                for col in headers:
+                    vals = preview_raw.get(col, [])
+                    row[col] = vals[i] if i < len(vals) else None
+                preview_rows.append(row)
+
+        file_size_mb = None
+        if upload.file_path:
+            try:
+                file_size_mb = round(Path(upload.file_path).stat().st_size / (1024 * 1024), 2)
+            except OSError:
+                pass
+
+        errors: List[str] = []
+        if upload.status == UploadStatus.FAILED:
+            err = meta.get("error")
+            if err:
+                errors.append(err)
+
+        return {
+            "upload_id": upload.id,
+            "filename": upload.filename,
+            "file_type": upload.file_type.value if upload.file_type else "unknown",
+            "status": upload.status.value,
+            "upload_time": upload.upload_time,
+            "metadata": {
+                "row_count": meta.get("row_count", 0),
+                "column_count": meta.get("column_count", 0),
+                "file_size_mb": file_size_mb,
+                "facility_name": meta.get("facility_name"),
+                "reporting_period": meta.get("reporting_period"),
+            },
+            "headers": headers,
+            "preview": preview_rows,
+            "errors": errors,
+        }
 
     def list_uploads(self, limit: int = 50, offset: int = 0) -> List[Upload]:
         """List recent uploads"""
