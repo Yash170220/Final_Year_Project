@@ -1,15 +1,16 @@
 """Matching API endpoints"""
 import logging
-from typing import Dict, List
+from typing import Optional
 from uuid import UUID
 from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.common.database import get_db
 from src.common.models import Upload, MatchedIndicator
-from src.common.schemas import MatchingReviewRequest, ErrorResponse
+from src.common.schemas import MatchingReviewRequest, MatchingResponse, ErrorResponse
 from src.common.config import settings
 from src.matching.service import MatchingService
 from src.matching.rule_matcher import RuleBasedMatcher
@@ -45,70 +46,72 @@ def get_matching_service(db: Session = Depends(get_db)) -> MatchingService:
 
 
 @router.post(
-    "/process/{upload_id}",
+    "/{upload_id}",
     status_code=status.HTTP_200_OK,
     responses={
         404: {"model": ErrorResponse, "description": "Upload not found"},
         422: {"model": ErrorResponse, "description": "Validation error"},
         500: {"model": ErrorResponse, "description": "Processing error"}
     },
-    summary="Process matching for uploaded file",
-    description="Trigger entity matching for all headers in uploaded file"
+    summary="Process matching or save reviews",
+    description=(
+        "Dual-purpose endpoint. "
+        "Empty body: triggers auto-matching for all headers. "
+        "Body with reviews list: saves manual review decisions."
+    )
 )
-async def process_matching(
+async def process_or_review(
     upload_id: UUID,
+    body: Optional[MatchingReviewRequest] = None,
     db: Session = Depends(get_db),
     service: MatchingService = Depends(get_matching_service)
 ):
-    """Process matching for uploaded file"""
-    logger.info(f"Processing matching for upload: {upload_id}")
-    
-    # Get upload record
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
-    
     if not upload:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Upload {upload_id} not found"
         )
-    
-    # Get headers from metadata
-    metadata = upload.metadata or {}
+
+    # Mode 2: body has reviews -> save them
+    if body and body.reviews:
+        saved = 0
+        for item in body.reviews:
+            match = db.query(MatchedIndicator).filter(
+                MatchedIndicator.id == item.indicator_id
+            ).first()
+            if not match:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Indicator {item.indicator_id} not found"
+                )
+            try:
+                service.approve_match(
+                    indicator_id=item.indicator_id,
+                    approved=item.approved,
+                    corrected_match=item.corrected_match,
+                    notes=item.notes
+                )
+                saved += 1
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=str(e)
+                )
+        return {"status": "reviews_saved", "count": saved}
+
+    # Mode 1: no body -> trigger auto-matching
+    metadata = upload.file_metadata or {}
     headers = metadata.get("column_names", [])
-    
     if not headers:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="No headers found in upload metadata"
         )
-    
+
     try:
-        # Process matching
         results = service.match_headers(upload_id, headers)
-        
-        # Calculate summary
-        total = len(results)
-        needs_review = sum(1 for r in results if r.requires_review)
-        auto_approved = total - needs_review
-        avg_confidence = sum(r.confidence for r in results) / total if total > 0 else 0.0
-        
-        return {
-            "upload_id": str(upload_id),
-            "summary": {
-                "total": total,
-                "auto_approved": auto_approved,
-                "needs_review": needs_review,
-                "avg_confidence": round(avg_confidence, 3)
-            },
-            "message": f"Matched {total} headers successfully"
-        }
-        
-    except ValueError as e:
-        logger.warning(f"Validation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Validation error"
-        )
+        return {"status": "completed", "processed_count": len(results)}
     except Exception as e:
         logger.exception(f"Error processing matching: {e}")
         raise HTTPException(
@@ -118,276 +121,31 @@ async def process_matching(
 
 
 @router.get(
-    "/results/{upload_id}",
-    status_code=status.HTTP_200_OK,
+    "/{upload_id}",
+    response_model=MatchingResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Upload not found"}
     },
     summary="Get matching results",
-    description="Get all matching results for an upload"
+    description="Consolidated view: stats, all results, and review queue in one response"
 )
-async def get_matching_results(
+async def get_matching_details(
     upload_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    service: MatchingService = Depends(get_matching_service)
 ):
-    """Get all matching results for an upload"""
-    logger.info(f"Fetching matching results for upload: {upload_id}")
-    
-    # Verify upload exists
     upload = db.query(Upload).filter(Upload.id == upload_id).first()
     if not upload:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Upload {upload_id} not found"
         )
-    
-    # Get all matches
-    matches = db.query(MatchedIndicator).filter(
-        MatchedIndicator.upload_id == upload_id
-    ).all()
-    
-    results = []
-    for match in matches:
-        results.append({
-            "indicator_id": str(match.id),
-            "original_header": match.original_header,
-            "matched_indicator": match.matched_indicator,
-            "confidence": round(match.confidence_score, 3),
-            "method": match.matching_method.value,
-            "requires_review": match.confidence_score < settings.matching.review_threshold,
-            "reviewed": match.reviewed,
-            "notes": match.reviewer_notes
-        })
-    
-    return {
-        "upload_id": str(upload_id),
-        "total_matches": len(results),
-        "results": results
-    }
 
-
-@router.get(
-    "/review-queue/{upload_id}",
-    status_code=status.HTTP_200_OK,
-    responses={
-        404: {"model": ErrorResponse, "description": "Upload not found"}
-    },
-    summary="Get review queue",
-    description="Get headers requiring manual review (confidence < 0.85)"
-)
-async def get_review_queue(
-    upload_id: UUID,
-    db: Session = Depends(get_db),
-    service: MatchingService = Depends(get_matching_service)
-):
-    """Get review queue for an upload"""
-    logger.info(f"Fetching review queue for upload: {upload_id}")
-    
-    # Verify upload exists
-    upload = db.query(Upload).filter(Upload.id == upload_id).first()
-    if not upload:
+    data = service.get_comprehensive_results(upload_id)
+    if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Upload {upload_id} not found"
-        )
-    
-    # Get review queue
-    review_items = service.get_review_queue(upload_id)
-    
-    results = []
-    for item in review_items:
-        results.append({
-            "indicator_id": str(item.indicator_id),
-            "original_header": item.original_header,
-            "matched_indicator": item.matched_indicator,
-            "confidence": round(item.confidence, 3),
-            "method": item.method,
-            "reasoning": item.reasoning
-        })
-    
-    return {
-        "upload_id": str(upload_id),
-        "review_count": len(results),
-        "items": results
-    }
-
-
-@router.post(
-    "/review",
-    status_code=status.HTTP_200_OK,
-    responses={
-        404: {"model": ErrorResponse, "description": "Indicator not found"},
-        422: {"model": ErrorResponse, "description": "Validation error"}
-    },
-    summary="Review and approve/correct match",
-    description="Submit review for a matched indicator"
-)
-async def review_match(
-    request: MatchingReviewRequest,
-    db: Session = Depends(get_db),
-    service: MatchingService = Depends(get_matching_service)
-):
-    """Review and approve or correct a match"""
-    logger.info(f"Reviewing match: {request.indicator_id}")
-    
-    # Check existence first
-    match = db.query(MatchedIndicator).filter(
-        MatchedIndicator.id == request.indicator_id
-    ).first()
-    
-    if not match:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Match not found"
-        )
-    
-    try:
-        # Approve/correct match
-        service.approve_match(
-            indicator_id=request.indicator_id,
-            approved=request.approved,
-            corrected_match=request.corrected_match,
-            notes=request.notes
-        )
-        
-        # Refresh to get updated data
-        db.refresh(match)
-        
-        return {
-            "indicator_id": str(match.id),
-            "original_header": match.original_header,
-            "matched_indicator": match.matched_indicator,
-            "confidence": round(match.confidence_score, 3),
-            "reviewed": match.reviewed,
-            "notes": match.reviewer_notes,
-            "message": "Review submitted successfully"
-        }
-        
-    except ValueError as e:
-        logger.warning(f"Validation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Validation error"
-        )
-    except Exception as e:
-        logger.exception(f"Error reviewing match: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            detail=f"No matching data for upload {upload_id}"
         )
 
-
-@router.get(
-    "/stats/{upload_id}",
-    status_code=status.HTTP_200_OK,
-    responses={
-        404: {"model": ErrorResponse, "description": "Upload not found"}
-    },
-    summary="Get matching statistics",
-    description="Get detailed statistics for matching results"
-)
-async def get_matching_stats(
-    upload_id: UUID,
-    db: Session = Depends(get_db),
-    service: MatchingService = Depends(get_matching_service)
-):
-    """Get matching statistics for an upload"""
-    logger.info(f"Fetching matching stats for upload: {upload_id}")
-    
-    # Verify upload exists
-    upload = db.query(Upload).filter(Upload.id == upload_id).first()
-    if not upload:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Upload {upload_id} not found"
-        )
-    
-    # Get statistics
-    stats = service.get_matching_stats(upload_id)
-    
-    # Calculate percentages
-    total = stats["total"]
-    needs_review = stats["requires_review"]
-    auto_approved = total - needs_review
-    
-    if total > 0:
-        auto_approved_pct = auto_approved / total * 100
-        needs_review_pct = needs_review / total * 100
-    else:
-        auto_approved_pct = 0.0
-        needs_review_pct = 0.0
-    
-    return {
-        "upload_id": str(upload_id),
-        "statistics": {
-            "total_headers": total,
-            "auto_approved": auto_approved,
-            "auto_approved_pct": round(auto_approved_pct, 1),
-            "needs_review": needs_review,
-            "needs_review_pct": round(needs_review_pct, 1),
-            "reviewed": stats["reviewed"],
-            "avg_confidence": round(stats["avg_confidence"], 3),
-            "by_method": stats["by_method"]
-        }
-    }
-
-
-@router.post(
-    "/rematch/{indicator_id}",
-    status_code=status.HTTP_200_OK,
-    responses={
-        404: {"model": ErrorResponse, "description": "Indicator not found"},
-        422: {"model": ErrorResponse, "description": "Validation error"}
-    },
-    summary="Rematch a header",
-    description="Re-run matching for a single header"
-)
-async def rematch_header(
-    indicator_id: UUID,
-    db: Session = Depends(get_db),
-    service: MatchingService = Depends(get_matching_service)
-):
-    """Rematch a single header"""
-    logger.info(f"Rematching indicator: {indicator_id}")
-    
-    try:
-        result = service.rematch_header(indicator_id)
-        
-        if not result:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="No match found for header"
-            )
-        
-        return {
-            "indicator_id": str(indicator_id),
-            "original_header": result.original_header,
-            "matched_indicator": result.matched_indicator,
-            "confidence": round(result.confidence, 3),
-            "method": result.method,
-            "requires_review": result.requires_review,
-            "message": "Rematch completed successfully"
-        }
-        
-    except ValueError as e:
-        # ValueError from service means "not found"
-        error_msg = str(e)
-        if "not found" in error_msg.lower():
-            logger.warning(f"Match not found: {indicator_id}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Match not found"
-            )
-        else:
-            # Other ValueError means validation error
-            logger.warning(f"Validation error: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Validation error"
-            )
-    except Exception as e:
-        logger.exception(f"Error rematching: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+    return data

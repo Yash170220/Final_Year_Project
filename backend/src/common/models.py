@@ -61,7 +61,7 @@ class Upload(Base):
     upload_time = Column(DateTime, nullable=False, default=datetime.utcnow)
     status = Column(Enum(UploadStatus), nullable=False, default=UploadStatus.PENDING)
     file_path = Column(String(512), nullable=False)
-    metadata = Column(JSON, nullable=True)
+    file_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

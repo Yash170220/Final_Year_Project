@@ -345,6 +345,60 @@ class MatchingService:
             "by_method": by_method
         }
 
+    def get_comprehensive_results(self, upload_id: UUID) -> Optional[Dict]:
+        """Get all matching data for an upload in one call: stats + results + review queue"""
+        matches = (
+            self.db.query(MatchedIndicator)
+            .filter(MatchedIndicator.upload_id == upload_id)
+            .order_by(MatchedIndicator.confidence_score.desc())
+            .all()
+        )
+
+        if matches is None:
+            return None
+
+        total = len(matches)
+        needs_review = sum(
+            1 for m in matches
+            if m.confidence_score < settings.matching.review_threshold
+        )
+        auto_approved = total - needs_review
+        avg_confidence = (
+            sum(m.confidence_score for m in matches) / total if total else 0.0
+        )
+
+        has_unreviewed = any(not m.reviewed for m in matches)
+        status = "completed" if not has_unreviewed else "needs_review"
+
+        results = []
+        review_queue = []
+        for m in matches:
+            item = {
+                "indicator_id": m.id,
+                "original_header": m.original_header,
+                "matched_indicator": m.matched_indicator,
+                "confidence": round(m.confidence_score, 3),
+                "requires_review": m.confidence_score < settings.matching.review_threshold,
+            }
+            results.append(item)
+
+            if m.confidence_score < settings.matching.review_threshold:
+                review_item = {**item, "reasoning": m.reviewer_notes}
+                review_queue.append(review_item)
+
+        return {
+            "upload_id": upload_id,
+            "status": status,
+            "stats": {
+                "total_headers": total,
+                "auto_approved": auto_approved,
+                "needs_review": needs_review,
+                "avg_confidence": round(avg_confidence, 3),
+            },
+            "results": results,
+            "review_queue": review_queue,
+        }
+
     def rematch_header(self, indicator_id: UUID) -> Optional[MatchingResult]:
         """Rematch a single header (useful after corrections)"""
         match = self.db.query(MatchedIndicator).filter(

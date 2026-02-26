@@ -6,7 +6,7 @@ from src.common.config import settings
 
 # Create database engine
 engine = create_engine(
-    settings.database_url,
+    settings.database.url,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20
