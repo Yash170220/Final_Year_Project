@@ -10,6 +10,7 @@ import polars as pl
 from sqlalchemy.orm import Session
 
 from src.common.models import Upload, UploadStatus, FileType, AuditLog, AuditAction
+from src.common.provenance import get_provenance_tracker
 from src.ingestion.base_parser import BaseParser
 from src.ingestion.csv_parser import CSVParser
 from src.ingestion.excel_parser import ExcelParser
@@ -101,7 +102,22 @@ class IngestionService:
             
             self.db.commit()
             logger.info(f"Successfully ingested file: {upload_id}")
-            
+
+            # Record provenance
+            end_time = datetime.utcnow()
+            prov = get_provenance_tracker()
+            activity_id = f"ingest_{upload_id}"
+            prov.record_activity(
+                activity_id, "file_ingestion",
+                upload.upload_time, end_time, "system",
+            )
+            prov.record_entity(str(upload_id), "uploaded_file", {
+                "filename": filename,
+                "file_type": file_type,
+                "rows": df.height,
+                "columns": df.width,
+            })
+
             # Generate preview (first 5 rows)
             preview = self._generate_preview(df)
             

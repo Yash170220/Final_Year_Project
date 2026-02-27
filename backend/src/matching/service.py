@@ -10,6 +10,7 @@ from sqlalchemy import func
 
 from src.common.models import MatchedIndicator, MatchingMethod, AuditLog, AuditAction
 from src.common.config import settings
+from src.common.provenance import get_provenance_tracker
 from src.matching.rule_matcher import RuleBasedMatcher
 from src.matching.llm_matcher import LLMMatcher
 
@@ -119,7 +120,24 @@ class MatchingService:
         )
         self.db.add(audit)
         self.db.commit()
-        
+
+        # Record provenance
+        prov = get_provenance_tracker()
+        start = datetime.now(timezone.utc)
+        activity_id = f"matching_{upload_id}"
+        prov.record_activity(
+            activity_id, "header_matching", start, datetime.now(timezone.utc), self.actor,
+        )
+        for result in results:
+            if result.indicator_id:
+                entity_id = str(result.indicator_id)
+                prov.record_entity(entity_id, "matched_indicator", {
+                    "original_header": result.original_header,
+                    "matched_indicator": result.matched_indicator,
+                    "confidence": result.confidence,
+                })
+                prov.record_derivation(str(upload_id), entity_id, activity_id)
+
         logger.info(
             f"Matching complete: {len(results)}/{len(headers)} matched, "
             f"{sum(1 for r in results if r.requires_review)} require review"
