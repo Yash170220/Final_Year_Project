@@ -166,9 +166,9 @@ class VectorStore:
         """Semantic search over validated data scoped to a single upload."""
         query_vector = self.encoder.encode(query).tolist()
 
-        results = self.client.search(
+        response = self.client.query_points(
             collection_name=VALIDATED_DATA_COLLECTION,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=Filter(
                 must=[
                     FieldCondition(
@@ -191,7 +191,7 @@ class VectorStore:
                 "similarity": round(hit.score, 4),
                 "data_id": hit.payload.get("data_id", ""),
             }
-            for hit in results
+            for hit in response.points
         ]
 
     def search_framework_definitions(
@@ -203,9 +203,9 @@ class VectorStore:
         """Semantic search over framework indicator definitions."""
         query_vector = self.encoder.encode(query).tolist()
 
-        results = self.client.search(
+        response = self.client.query_points(
             collection_name=FRAMEWORK_DEFS_COLLECTION,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=Filter(
                 must=[
                     FieldCondition(
@@ -227,5 +227,5 @@ class VectorStore:
                 "similarity": round(hit.score, 4),
                 "text": hit.payload.get("text", ""),
             }
-            for hit in results
+            for hit in response.points
         ]

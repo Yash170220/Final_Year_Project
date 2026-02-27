@@ -280,6 +280,72 @@ class ValidationReviewRequest(BaseModel):
     reviews: List[ValidationReviewItem]
 
 
+# --- Generation schemas ---
+
+class GenerationRequest(BaseModel):
+    """Request body for narrative generation"""
+    sections: List[str] = Field(
+        ..., min_length=1, description="Section types to generate"
+    )
+    indicators: List[str] = Field(
+        ..., min_length=1, description="Indicator names to generate for"
+    )
+    framework: str = Field(default="BRSR", description="Framework to use")
+
+
+class NarrativeCitation(BaseModel):
+    """Citation verification details"""
+    total_claims: int = 0
+    verified_claims: int = 0
+    verification_rate: float = 1.0
+
+
+class NarrativeItem(BaseModel):
+    """Single generated narrative"""
+    indicator: str
+    section: str
+    content: str
+    citations: NarrativeCitation
+    verification_rate: float = 1.0
+
+
+class GenerationSummary(BaseModel):
+    """Summary stats for the generation batch"""
+    total_narratives: int = 0
+    overall_verification_rate: float = 1.0
+
+
+class GenerationResponse(BaseModel):
+    """Response for POST /api/v1/generation/{upload_id}"""
+    upload_id: UUID
+    narratives: List[NarrativeItem] = Field(default_factory=list)
+    summary: GenerationSummary
+
+
+# --- Provenance schemas ---
+
+class ProvenanceActivity(BaseModel):
+    """Activity that produced a lineage step"""
+    type: str = ""
+    timestamp: str = ""
+    agent: str = ""
+
+
+class LineageStep(BaseModel):
+    """Single step in the provenance chain"""
+    entity_id: str
+    entity_type: str = ""
+    activity: ProvenanceActivity = Field(default_factory=ProvenanceActivity)
+
+
+class ProvenanceResponse(BaseModel):
+    """Response for GET /api/v1/provenance/{entity_id}"""
+    entity_id: str
+    entity_type: str = ""
+    lineage_chain: List[LineageStep] = Field(default_factory=list)
+    total_steps: int = 0
+
+
 class ErrorResponse(BaseModel):
     """Standard error response"""
     error: str

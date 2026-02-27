@@ -21,6 +21,7 @@ from src.common.models import (
     Severity
 )
 from pydantic import BaseModel, Field
+from src.common.provenance import get_provenance_tracker
 
 
 class ValidationSummary(BaseModel):
@@ -120,7 +121,24 @@ class ValidationService:
         
         # Log audit trail
         self._log_validation_audit(upload_id, summary)
-        
+
+        # Record provenance
+        prov = get_provenance_tracker()
+        activity_id = f"validation_{upload_id}"
+        prov.record_activity(
+            activity_id, "data_validation",
+            datetime.utcnow(), datetime.utcnow(), "validation_service",
+        )
+        prov.record_entity(f"validated_{upload_id}", "validation_results", {
+            "total_records": summary.total_records,
+            "errors": summary.records_with_errors,
+            "warnings": summary.records_with_warnings,
+            "pass_rate": summary.validation_pass_rate,
+        })
+        prov.record_derivation(
+            f"normalized_{upload_id}", f"validated_{upload_id}", activity_id,
+        )
+
         return summary
     
     def validate_indicator_batch(

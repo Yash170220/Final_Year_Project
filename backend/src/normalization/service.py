@@ -17,6 +17,7 @@ from src.common.models import (
     AuditLog,
     AuditAction,
 )
+from src.common.provenance import get_provenance_tracker
 from src.normalization.normalizer import UnitNormalizer, UnitNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,20 @@ class NormalizationService:
                         failed_normalization += len([v for v in column_data if isinstance(v, (int, float)) and v is not None])
                     
                     total_records += indicator_total if indicator_total > 0 else len(column_data) if column_data else 0
+
+            # Record provenance
+            prov = get_provenance_tracker()
+            activity_id = f"normalization_{upload_id}"
+            prov.record_activity(
+                activity_id, "data_normalization",
+                datetime.now(timezone.utc), datetime.now(timezone.utc), "system",
+            )
+            prov.record_entity(f"normalized_{upload_id}", "normalized_dataset", {
+                "total": total_records,
+                "success": successfully_normalized,
+                "failed": failed_normalization,
+            })
+            prov.record_derivation(str(upload_id), f"normalized_{upload_id}", activity_id)
 
             # Create audit log
             self._create_audit_log(
