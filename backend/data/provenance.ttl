@@ -1,0 +1,354 @@
+@prefix ex: <http://example.org/esg/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:0266d354-6dd4-4c92-8a91-e8938a5f072d a prov:Entity ;
+    ex:confidence "0.85" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Scope 1 GHG Emissions" ;
+    ex:original_header "Carbon Intensity (kg CO2/tonne)" ;
+    prov:wasDerivedFrom ex:b5fc4b18-fcad-4dc0-8050-0bed07b6c3db ;
+    prov:wasGeneratedBy ex:matching_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db .
+
+ex:0638a8e3-0417-43ec-9cf7-d676b62444f2 a prov:Entity ;
+    ex:confidence "0.896551724137931" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Scope 1 GHG Emissions" ;
+    ex:original_header "CO2 Emissions (kg)" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:0a59d357-a3ac-484b-bf0c-7db6fea8abac a prov:Entity ;
+    ex:confidence "0.85" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Non-Hazardous Waste Generated" ;
+    ex:original_header "Waste Generated (kg)" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:1436d9b4-2160-40f3-8d9c-54d0621f36b4 a prov:Entity ;
+    ex:confidence "0.896551724137931" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Scope 1 GHG Emissions" ;
+    ex:original_header "Emissions (kg CO2)" ;
+    prov:wasDerivedFrom ex:b5fc4b18-fcad-4dc0-8050-0bed07b6c3db ;
+    prov:wasGeneratedBy ex:matching_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db .
+
+ex:14ecd7da-d929-44a0-842d-0532e197421d a prov:Entity ;
+    ex:confidence "1.0" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Total Electricity Consumption" ;
+    ex:original_header "Electricity (kWh)" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:155626f7-dd89-4579-881a-0d9ce5614430 a prov:Entity ;
+    ex:confidence "0.85" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Non-Hazardous Waste Generated" ;
+    ex:original_header "Waste Generated (kg)" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:matching_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:1ebecf37-d985-4c55-a839-d5556fd0ebfb a prov:Entity ;
+    ex:confidence "0.95" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Sulfur Oxides Emissions" ;
+    ex:original_header "SOx Emissions (kg)" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:2d9a1ccd-fe20-4bac-9573-8010c158c646 a prov:Entity ;
+    ex:confidence "1.0" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Safety Incidents" ;
+    ex:original_header "Safety Incidents" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:matching_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:32555f0b-54c0-48d0-957c-333a73d3b33f a prov:Entity ;
+    ex:confidence "0.9285714285714286" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Natural Gas Consumption" ;
+    ex:original_header "Natural Gas (m³)" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:matching_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:3e550693-54ce-41db-aeda-3314b229230d a prov:Entity ;
+    ex:confidence "0.896551724137931" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Scope 1 GHG Emissions" ;
+    ex:original_header "CO2 Emissions (kg)" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:matching_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:690f1795-e38e-44b2-88f9-0366f9fc6f4a a prov:Entity ;
+    ex:confidence "1.0" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Safety Incidents" ;
+    ex:original_header "Safety Incidents" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:72adcfb3-3912-481a-bf50-18d1140721d1 a prov:Entity ;
+    ex:confidence "0.9142857142857143" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Fuel Oil Consumption" ;
+    ex:original_header "Fuel Consumption (GJ)" ;
+    prov:wasDerivedFrom ex:b5fc4b18-fcad-4dc0-8050-0bed07b6c3db ;
+    prov:wasGeneratedBy ex:matching_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db .
+
+ex:74ae4007-4e92-4597-8617-008c7be378e2 a prov:Entity ;
+    ex:confidence "0.9285714285714286" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Natural Gas Consumption" ;
+    ex:original_header "Natural Gas (m³)" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:767fbd6d-c3d8-43db-8bf1-2b07af4f6a54 a prov:Entity ;
+    ex:confidence "0.7" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Total Electricity Consumption" ;
+    ex:original_header "Energy Intensity (GJ/tonne)" ;
+    prov:wasDerivedFrom ex:b5fc4b18-fcad-4dc0-8050-0bed07b6c3db ;
+    prov:wasGeneratedBy ex:matching_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db .
+
+ex:78f94222-b4e0-4ecc-931a-a8615ca305bf a prov:Entity ;
+    ex:confidence "0.875" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Total Water Consumption" ;
+    ex:original_header "Water (m³)" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:7f2655e1-03f1-44d7-8e19-19d3d00c6320 a prov:Entity ;
+    ex:confidence "1.0" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Total Electricity Consumption" ;
+    ex:original_header "Electricity (kWh)" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:matching_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:9baac27e-3ce9-4409-bcea-aab7dd9f0db0 a prov:Entity ;
+    ex:confidence "0.9032258064516128" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Waste Recycled" ;
+    ex:original_header "Waste Recycled (kg)" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:matching_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:aaad2299-7f6e-4e0c-91bd-00cd79261c64 a prov:Entity ;
+    ex:confidence "1.0" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Production Output" ;
+    ex:original_header "Production (tonnes)" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:matching_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:ac26f850-2ad8-44d1-ac2f-c6d74efae1ad a prov:Entity ;
+    ex:confidence "1.0" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Production Output" ;
+    ex:original_header "Production (tonnes)" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:c37e78e3-055f-4ad3-b015-61163a4ed688 a prov:Entity ;
+    ex:confidence "0.95" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Nitrogen Oxides Emissions" ;
+    ex:original_header "NOx Emissions (kg)" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:matching_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:ca564dad-5edc-4e66-9e08-b38a38f3d9f0 a prov:Entity ;
+    ex:confidence "0.875" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Total Water Consumption" ;
+    ex:original_header "Water (m³)" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:matching_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:cddee017-3c52-4920-90d0-0dbd46fa22ba a prov:Entity ;
+    ex:confidence "0.95" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Nitrogen Oxides Emissions" ;
+    ex:original_header "NOx Emissions (kg)" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:ce9cea98-0d25-488c-9fb6-c710d4ca7576 a prov:Entity ;
+    ex:confidence "1.0" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Production Output" ;
+    ex:original_header "Production (tonnes)" ;
+    prov:wasDerivedFrom ex:b5fc4b18-fcad-4dc0-8050-0bed07b6c3db ;
+    prov:wasGeneratedBy ex:matching_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db .
+
+ex:cebca9cd-a940-4c3e-80d5-68dfb569b9b8 a prov:Entity ;
+    ex:confidence "0.9032258064516128" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Waste Recycled" ;
+    ex:original_header "Waste Recycled (kg)" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:daa58b61-1907-493d-b68d-a0dc8f49018b a prov:Entity ;
+    ex:confidence "0.95" ;
+    ex:entityType "matched_indicator" ;
+    ex:matched_indicator "Sulfur Oxides Emissions" ;
+    ex:original_header "SOx Emissions (kg)" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:matching_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:ingest_61b099a8-5e60-436f-93c9-a336af208275 a prov:Activity ;
+    ex:activityType "file_ingestion" ;
+    prov:endedAtTime "2026-03-06T00:46:59.579195"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-06T00:46:59.576303"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/system> .
+
+ex:ingest_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db a prov:Activity ;
+    ex:activityType "file_ingestion" ;
+    prov:endedAtTime "2026-03-02T22:19:22.989540"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-02T22:19:22.653900"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/system> .
+
+ex:ingest_e100d44a-a57e-4597-8845-830e7c0fdad6 a prov:Activity ;
+    ex:activityType "file_ingestion" ;
+    prov:endedAtTime "2026-03-05T23:05:16.262033"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-05T23:05:15.906630"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/system> .
+
+ex:validated_61b099a8-5e60-436f-93c9-a336af208275 a prov:Entity ;
+    ex:entityType "validation_results" ;
+    ex:errors "0" ;
+    ex:pass_rate "100.0" ;
+    ex:total_records "16425" ;
+    ex:warnings "0" ;
+    prov:wasDerivedFrom ex:normalized_61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:validation_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:validated_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db a prov:Entity ;
+    ex:entityType "validation_results" ;
+    ex:errors "0" ;
+    ex:pass_rate "100.0" ;
+    ex:total_records "96" ;
+    ex:warnings "0" ;
+    prov:wasDerivedFrom ex:normalized_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db ;
+    prov:wasGeneratedBy ex:validation_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db .
+
+ex:validated_e100d44a-a57e-4597-8845-830e7c0fdad6 a prov:Entity ;
+    ex:entityType "validation_results" ;
+    ex:errors "0" ;
+    ex:pass_rate "100.0" ;
+    ex:total_records "14600" ;
+    ex:warnings "0" ;
+    prov:wasDerivedFrom ex:normalized_e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:validation_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:normalization_61b099a8-5e60-436f-93c9-a336af208275 a prov:Activity ;
+    ex:activityType "data_normalization" ;
+    prov:endedAtTime "2026-03-06T00:48:21.749099+00:00"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-06T00:48:21.749096+00:00"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/system> .
+
+ex:normalization_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db a prov:Activity ;
+    ex:activityType "data_normalization" ;
+    prov:endedAtTime "2026-03-02T22:20:16.585746+00:00"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-02T22:20:16.585744+00:00"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/system> .
+
+ex:normalization_e100d44a-a57e-4597-8845-830e7c0fdad6 a prov:Activity ;
+    ex:activityType "data_normalization" ;
+    prov:endedAtTime "2026-03-05T23:11:13.625812+00:00"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-05T23:11:13.625808+00:00"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/system> .
+
+ex:normalized_61b099a8-5e60-436f-93c9-a336af208275 a prov:Entity ;
+    ex:entityType "normalized_dataset" ;
+    ex:failed "0" ;
+    ex:success "16425" ;
+    ex:total "18250" ;
+    prov:wasDerivedFrom ex:61b099a8-5e60-436f-93c9-a336af208275 ;
+    prov:wasGeneratedBy ex:normalization_61b099a8-5e60-436f-93c9-a336af208275 .
+
+ex:normalized_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db a prov:Entity ;
+    ex:entityType "normalized_dataset" ;
+    ex:failed "0" ;
+    ex:success "96" ;
+    ex:total "96" ;
+    prov:wasDerivedFrom ex:b5fc4b18-fcad-4dc0-8050-0bed07b6c3db ;
+    prov:wasGeneratedBy ex:normalization_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db .
+
+ex:normalized_e100d44a-a57e-4597-8845-830e7c0fdad6 a prov:Entity ;
+    ex:entityType "normalized_dataset" ;
+    ex:failed "3650" ;
+    ex:success "14600" ;
+    ex:total "18250" ;
+    prov:wasDerivedFrom ex:e100d44a-a57e-4597-8845-830e7c0fdad6 ;
+    prov:wasGeneratedBy ex:normalization_e100d44a-a57e-4597-8845-830e7c0fdad6 .
+
+ex:validation_61b099a8-5e60-436f-93c9-a336af208275 a prov:Activity ;
+    ex:activityType "data_validation" ;
+    prov:endedAtTime "2026-03-06T00:49:25.513916"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-06T00:49:25.513909"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/validation_service> .
+
+ex:validation_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db a prov:Activity ;
+    ex:activityType "data_validation" ;
+    prov:endedAtTime "2026-03-02T22:20:50.883845"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-02T22:20:50.883840"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/validation_service> .
+
+ex:validation_e100d44a-a57e-4597-8845-830e7c0fdad6 a prov:Activity ;
+    ex:activityType "data_validation" ;
+    prov:endedAtTime "2026-03-05T23:13:17.274346"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-05T23:13:17.274341"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/validation_service> .
+
+<http://example.org/esg/agent/api> a prov:Agent .
+
+<http://example.org/esg/agent/validation_service> a prov:Agent .
+
+ex:matching_b5fc4b18-fcad-4dc0-8050-0bed07b6c3db a prov:Activity ;
+    ex:activityType "header_matching" ;
+    prov:endedAtTime "2026-03-02T22:19:54.570330+00:00"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-02T22:19:54.570313+00:00"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/api> .
+
+<http://example.org/esg/agent/system> a prov:Agent .
+
+ex:b5fc4b18-fcad-4dc0-8050-0bed07b6c3db a prov:Entity ;
+    ex:columns "6" ;
+    ex:entityType "uploaded_file" ;
+    ex:file_type "csv" ;
+    ex:filename "tmpj01t47u5.csv" ;
+    ex:rows "24" .
+
+ex:matching_61b099a8-5e60-436f-93c9-a336af208275 a prov:Activity ;
+    ex:activityType "header_matching" ;
+    prov:endedAtTime "2026-03-06T00:48:01.801897+00:00"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-06T00:48:01.801882+00:00"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/api> .
+
+ex:matching_e100d44a-a57e-4597-8845-830e7c0fdad6 a prov:Activity ;
+    ex:activityType "header_matching" ;
+    prov:endedAtTime "2026-03-05T23:09:12.776411+00:00"^^xsd:dateTime ;
+    prov:startedAtTime "2026-03-05T23:09:12.776393+00:00"^^xsd:dateTime ;
+    prov:wasAssociatedWith <http://example.org/esg/agent/api> .
+
+ex:61b099a8-5e60-436f-93c9-a336af208275 a prov:Entity ;
+    ex:columns "12" ;
+    ex:entityType "uploaded_file" ;
+    ex:file_type "csv" ;
+    ex:filename "tmpzs8s2h9u.csv" ;
+    ex:rows "1825" .
+
+ex:e100d44a-a57e-4597-8845-830e7c0fdad6 a prov:Entity ;
+    ex:columns "12" ;
+    ex:entityType "uploaded_file" ;
+    ex:file_type "csv" ;
+    ex:filename "tmpr6gi7ah3.csv" ;
+    ex:rows "1825" .
+

@@ -26,6 +26,20 @@ FORMAT_MEDIA_TYPES = {
     "nt": "application/n-triples",
 }
 
+ENTITY_LABELS = {
+    "uploaded_file": "Uploaded File",
+    "matched_indicator": "Matched Indicator",
+    "normalized_dataset": "Normalized Data",
+    "validation_results": "Validation Results",
+}
+
+ACTIVITY_EXPLANATIONS = {
+    "file_ingestion": "File was uploaded and parsed",
+    "header_matching": "File headers were matched to ESG indicators",
+    "data_normalization": "Values were converted to standard units",
+    "data_validation": "Data quality rules were checked",
+}
+
 
 @router.get(
     "/{entity_id}",
@@ -73,16 +87,38 @@ async def trace_provenance(
 
     chain = [
         LineageStep(
+            step_number=idx + 1,
             entity_id=step["entity_id"],
             entity_type=step.get("entity_type", ""),
+            entity_label=ENTITY_LABELS.get(step.get("entity_type", ""), step.get("entity_type", "")),
             activity=ProvenanceActivity(**step.get("activity", {})),
         )
-        for step in lineage_raw
+        for idx, step in enumerate(lineage_raw)
     ]
+
+    # Inject plain-English explanation for activity in each step
+    for line_step in chain:
+        line_step.activity.what_happened = ACTIVITY_EXPLANATIONS.get(
+            line_step.activity.type,
+            "This item was produced by a processing step",
+        )
+
+    label = ENTITY_LABELS.get(entity_type, entity_type)
+    if chain:
+        summary = (
+            f"This {label or 'item'} was created through {len(chain)} step(s) "
+            f"from earlier data."
+        )
+    else:
+        summary = (
+            f"This {label or 'item'} is a source item and has no earlier lineage."
+        )
 
     return ProvenanceResponse(
         entity_id=entity_id,
         entity_type=entity_type,
+        entity_label=label,
+        simple_summary=summary,
         lineage_chain=chain,
         total_steps=len(chain),
     )

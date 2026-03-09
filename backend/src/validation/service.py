@@ -138,6 +138,7 @@ class ValidationService:
         prov.record_derivation(
             f"normalized_{upload_id}", f"validated_{upload_id}", activity_id,
         )
+        prov.flush()
 
         return summary
     

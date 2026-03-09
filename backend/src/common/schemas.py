@@ -285,16 +285,29 @@ class ValidationReviewRequest(BaseModel):
 class GenerationRequest(BaseModel):
     """Request body for narrative generation"""
     sections: List[str] = Field(
-        ..., min_length=1, description="Section types to generate"
+        default=["management_approach", "methodology", "boundary"],
+        description="Section types to generate",
     )
-    indicators: List[str] = Field(
-        ..., min_length=1, description="Indicator names to generate for"
+    indicators: Optional[List[str]] = Field(
+        default=None,
+        description="Indicator names to generate for (all if omitted)",
     )
     framework: str = Field(default="BRSR", description="Framework to use")
+    include_recommendations: bool = Field(
+        default=True,
+        description="Include AI-powered improvement recommendations",
+    )
+
+
+class CitationDetail(BaseModel):
+    """Individual citation verification"""
+    reference: str = ""
+    value: float = 0.0
+    verified: bool = False
 
 
 class NarrativeCitation(BaseModel):
-    """Citation verification details"""
+    """Aggregate citation verification stats"""
     total_claims: int = 0
     verified_claims: int = 0
     verification_rate: float = 1.0
@@ -305,20 +318,38 @@ class NarrativeItem(BaseModel):
     indicator: str
     section: str
     content: str
-    citations: NarrativeCitation
+    citations: List[CitationDetail] = Field(default_factory=list)
     verification_rate: float = 1.0
+    word_count: int = 0
+
+
+class RecommendationItem(BaseModel):
+    """Single AI recommendation"""
+    indicator: str = ""
+    current_value: float = 0.0
+    unit: str = ""
+    industry_average: float = 0.0
+    best_in_class: float = 0.0
+    gap_percentage: float = 0.0
+    status: str = ""
+    priority: str = "low"
+    suggestions: List[str] = Field(default_factory=list)
 
 
 class GenerationSummary(BaseModel):
     """Summary stats for the generation batch"""
     total_narratives: int = 0
+    total_citations: int = 0
     overall_verification_rate: float = 1.0
+    high_priority_recommendations: int = 0
 
 
 class GenerationResponse(BaseModel):
     """Response for POST /api/v1/generation/{upload_id}"""
     upload_id: UUID
+    framework: str = "BRSR"
     narratives: List[NarrativeItem] = Field(default_factory=list)
+    recommendations: Optional[List[RecommendationItem]] = None
     summary: GenerationSummary
 
 
@@ -326,24 +357,79 @@ class GenerationResponse(BaseModel):
 
 class ProvenanceActivity(BaseModel):
     """Activity that produced a lineage step"""
-    type: str = ""
-    timestamp: str = ""
-    agent: str = ""
+    type: str = Field(default="", description="Technical activity type")
+    timestamp: str = Field(default="", description="When this activity happened (ISO format)")
+    agent: str = Field(default="", description="System/user that performed this activity")
+    what_happened: str = Field(
+        default="",
+        description="Plain-English explanation of this activity",
+        examples=["Data was validated by the system"],
+    )
 
 
 class LineageStep(BaseModel):
     """Single step in the provenance chain"""
-    entity_id: str
-    entity_type: str = ""
+    step_number: int = Field(default=0, description="Step number in the lineage chain")
+    entity_id: str = Field(description="Unique ID of the related data item")
+    entity_type: str = Field(default="", description="Type of data item")
+    entity_label: str = Field(
+        default="",
+        description="Human-readable name for this item type",
+        examples=["Uploaded File", "Normalized Data", "Validation Results"],
+    )
     activity: ProvenanceActivity = Field(default_factory=ProvenanceActivity)
 
 
 class ProvenanceResponse(BaseModel):
     """Response for GET /api/v1/provenance/{entity_id}"""
-    entity_id: str
-    entity_type: str = ""
+    entity_id: str = Field(description="ID you asked to trace")
+    entity_type: str = Field(default="", description="Type of the requested entity")
+    entity_label: str = Field(
+        default="",
+        description="Human-readable label for the requested entity",
+        examples=["Uploaded File", "Validation Results"],
+    )
+    simple_summary: str = Field(
+        default="",
+        description="Plain-English summary of the lineage result",
+    )
     lineage_chain: List[LineageStep] = Field(default_factory=list)
     total_steps: int = 0
+
+
+# --- Chat schemas ---
+
+class ChatRequest(BaseModel):
+    """Request body for chat endpoint"""
+    question: str = Field(..., min_length=1, max_length=1000)
+    session_id: Optional[str] = Field(
+        None, description="Session ID for conversation history (auto-generated if empty)"
+    )
+
+
+class ChatMessage(BaseModel):
+    """Single message in conversation history"""
+    role: str = Field(description="'user' or 'assistant'")
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ChatSource(BaseModel):
+    """Single data source used in a chat answer"""
+    indicator: str
+    value: Optional[float] = None
+    unit: str = ""
+    period: Optional[str] = None
+    facility: Optional[str] = None
+    similarity: float = 0.0
+
+
+class ChatResponse(BaseModel):
+    """Response from the chat endpoint"""
+    answer: str
+    sources: List[ChatSource] = Field(default_factory=list)
+    confidence: float = 0.0
+    session_id: str = ""
 
 
 class ErrorResponse(BaseModel):
