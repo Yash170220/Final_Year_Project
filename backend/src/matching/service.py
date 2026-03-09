@@ -137,6 +137,7 @@ class MatchingService:
                     "confidence": result.confidence,
                 })
                 prov.record_derivation(str(upload_id), entity_id, activity_id)
+        prov.flush()
 
         logger.info(
             f"Matching complete: {len(results)}/{len(headers)} matched, "

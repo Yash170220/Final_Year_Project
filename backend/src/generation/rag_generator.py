@@ -96,8 +96,8 @@ class RAGGenerator:
     # Prompt construction
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _build_prompt(
+        self,
         section_type: str,
         data: List[Dict],
         framework_def: Dict,
@@ -106,28 +106,116 @@ class RAGGenerator:
         indicator_name = framework_def.get("indicator_name", "Unknown")
         definition = framework_def.get("definition", "N/A")
         calculation = framework_def.get("calculation", "N/A")
+        unit = framework_def.get("unit", "")
+        boundary = framework_def.get("boundary", "Operational control")
 
-        data_block = "\n".join(
-            f"  [Table {i + 1}] {row.get('text', '')} "
-            f"(value={row.get('value')}, unit={row.get('unit', '')}, "
-            f"period={row.get('period', '')}, facility={row.get('facility', '')})"
-            for i, row in enumerate(data)
-        )
-        if not data_block:
-            data_block = "  No data available."
+        data_table = self._format_data_table(data)
+
+        if section_type == "management_approach":
+            return (
+                f"You are an expert ESG report writer. Generate a professional "
+                f"management approach narrative for {indicator_name}.\n\n"
+                f"CONTEXT:\n"
+                f"Framework Definition: {definition}\n"
+                f"Calculation Method: {calculation}\n"
+                f"Unit: {unit}\n\n"
+                f"AVAILABLE DATA:\n{data_table}\n\n"
+                f"REQUIREMENTS:\n"
+                f'1. Start with organizational scope: "The organization monitors '
+                f'{indicator_name} across X facilities..."\n'
+                f'2. Present current performance with exact numbers and citations: "[Table X]"\n'
+                f'3. Compare to baseline/prior period if data available: "representing a X% change from..."\n'
+                f"4. Explain significant trends (>5% change)\n"
+                f"5. Mention boundary and coverage: "
+                f'"across all manufacturing operations under operational control"\n'
+                f"6. Professional tone, active voice, past tense for historical data\n"
+                f"7. 150-200 words, structured in 3-4 concise paragraphs\n"
+                f"8. Every quantitative claim MUST have [Table X] citation\n\n"
+                f"STYLE GUIDE:\n"
+                f'Good: "Total electricity consumption was 15,450 MWh [Table 2]"\n'
+                f'Bad:  "We used electricity"\n'
+                f'Good: "Plant A achieved a 12% reduction through LED retrofits"\n'
+                f'Bad:  "Things improved"\n\n'
+                f"Generate professional narrative now:"
+            )
+
+        if section_type == "methodology":
+            return (
+                f"Generate technical methodology section for {indicator_name}.\n\n"
+                f"FRAMEWORK REQUIREMENTS:\n"
+                f"Definition: {definition}\n"
+                f"Standard Calculation: {calculation}\n"
+                f"Required Unit: {unit}\n\n"
+                f"DATA SOURCES:\n{data_table}\n\n"
+                f"STRUCTURE REQUIRED:\n"
+                f'1. Measurement approach: "Data collected from [metering systems/invoices/direct measurement]"\n'
+                f'2. Calculation methodology: "{calculation}"\n'
+                f"3. Emission/conversion factors used (if applicable)\n"
+                f'4. Data quality: "Measured data from calibrated meters with +/-2% accuracy"\n'
+                f'5. Organizational boundary: "{boundary}"\n'
+                f'6. Reporting period and frequency: "Monthly data aggregated for annual reporting"\n'
+                f'7. Standards followed: "Calculated per {framework} guidelines"\n\n'
+                f"TECHNICAL REQUIREMENTS:\n"
+                f"- Use precise technical terminology\n"
+                f"- Cite all emission factors, conversion factors, and standards\n"
+                f"- Explain any deviations from standard methodology\n"
+                f"- 120-180 words\n"
+                f"- Every technical specification needs [Source] citation\n\n"
+                f"Generate methodology now:"
+            )
+
+        if section_type == "boundary":
+            facilities_list = self._format_facilities(data)
+            return (
+                f"Generate organizational boundary description for {indicator_name}.\n\n"
+                f"FRAMEWORK: {boundary} approach\n\n"
+                f"FACILITIES IN DATA:\n{facilities_list}\n\n"
+                f"STRUCTURE:\n"
+                f'1. Boundary approach: "Reporting follows [{boundary}] approach"\n'
+                f"2. Facilities included: List all facilities with brief description\n"
+                f'3. Exclusions (if any): "The following are excluded: [list with rationale]"\n'
+                f'4. Consolidation method: "Data aggregated across all included facilities"\n'
+                f'5. Changes from prior period: "No changes to boundary" or detail changes\n\n'
+                f"REQUIREMENTS:\n"
+                f"- Clear, unambiguous scope definition\n"
+                f"- Justify exclusions if any\n"
+                f"- 100-150 words\n"
+                f"- Compliance with {framework} boundary requirements\n\n"
+                f"Generate boundary description now:"
+            )
 
         return (
-            f"Generate a {section_type} section for the indicator: {indicator_name}.\n\n"
-            f"RULES:\n"
-            f"1. Use ONLY the provided data — no fabrication.\n"
-            f"2. Cite numbers with [Table X] referencing the data rows below.\n"
-            f"3. Follow {framework} terminology and reporting conventions.\n"
-            f"4. 100-150 words, factual, past tense.\n\n"
-            f"Framework definition: {definition}\n"
-            f"Calculation method: {calculation}\n\n"
-            f"Data:\n{data_block}\n\n"
-            f"Generate now."
+            f"Generate {section_type} section for {indicator_name} "
+            f"using ONLY the provided data. Cite with [Table X].\n\n"
+            f"Framework: {definition}\nCalculation: {calculation}\n"
+            f"Unit: {unit}\n\nData:\n{data_table}\n\nGenerate now:"
         )
+
+    @staticmethod
+    def _format_data_table(data: List[Dict]) -> str:
+        if not data:
+            return "No data available"
+
+        table = "| Facility | Period | Value | Unit |\n|----------|--------|-------|------|\n"
+        for i, d in enumerate(data[:10], 1):
+            table += (
+                f"| {d.get('facility', 'N/A')} | {d.get('period', 'N/A')} "
+                f"| {d.get('value', 'N/A')} | {d.get('unit', '')} | [Table {i}]\n"
+            )
+
+        if len(data) > 1 and all("value" in d for d in data):
+            try:
+                total = sum(float(d["value"]) for d in data)
+                table += f"| **TOTAL** | All periods | **{total}** | {data[0].get('unit', '')} |\n"
+            except (ValueError, TypeError):
+                pass
+
+        return table
+
+    @staticmethod
+    def _format_facilities(data: List[Dict]) -> str:
+        facilities = sorted(set(d.get("facility", "Unknown") for d in data))
+        return "\n".join(f"- {f}" for f in facilities) if facilities else "- Unknown"
 
     # ------------------------------------------------------------------
     # LLM call with retry
@@ -159,15 +247,7 @@ class RAGGenerator:
 
     @staticmethod
     def _verify_citations(content: str, data: List[Dict]) -> Dict:
-        """Extract numeric claims from the generated text and check against source data."""
-        numbers_in_content = re.findall(r"[\d,]+\.?\d*", content)
-        parsed_claims: List[float] = []
-        for raw in numbers_in_content:
-            try:
-                parsed_claims.append(float(raw.replace(",", "")))
-            except ValueError:
-                continue
-
+        """Extract numeric claims and [Table X] references, verify against source data."""
         data_values: List[float] = []
         for row in data:
             val = row.get("value")
@@ -176,6 +256,35 @@ class RAGGenerator:
                     data_values.append(float(val))
                 except (ValueError, TypeError):
                     continue
+
+        ref_pattern = re.compile(r"\[Table\s*(\d+)\]")
+        refs_found = ref_pattern.findall(content)
+
+        detailed: List[Dict] = []
+        seen_refs: set = set()
+        for ref_num in refs_found:
+            ref_label = f"[Table {ref_num}]"
+            if ref_label in seen_refs:
+                continue
+            seen_refs.add(ref_label)
+
+            idx = int(ref_num) - 1
+            if 0 <= idx < len(data):
+                try:
+                    val = float(data[idx].get("value", 0))
+                except (ValueError, TypeError):
+                    val = 0.0
+                detailed.append({"reference": ref_label, "value": val, "verified": True})
+            else:
+                detailed.append({"reference": ref_label, "value": 0.0, "verified": False})
+
+        numbers_in_content = re.findall(r"[\d,]+\.?\d*", content)
+        parsed_claims: List[float] = []
+        for raw in numbers_in_content:
+            try:
+                parsed_claims.append(float(raw.replace(",", "")))
+            except ValueError:
+                continue
 
         verified = 0
         for claim in parsed_claims:
@@ -195,6 +304,7 @@ class RAGGenerator:
             "total_claims": total,
             "verified_claims": verified,
             "verification_rate": round(rate, 4),
+            "details": detailed,
         }
 
     # ------------------------------------------------------------------

@@ -186,6 +186,7 @@ class NormalizationService:
                 "failed": failed_normalization,
             })
             prov.record_derivation(str(upload_id), f"normalized_{upload_id}", activity_id)
+            prov.flush()
 
             # Create audit log
             self._create_audit_log(
@@ -329,6 +330,22 @@ class NormalizationService:
                 return 'kg'
             else:
                 return 'tonnes'
+
+        # Fuel / gas patterns
+        if any(keyword in indicator_name.lower() for keyword in ['gas', 'fuel', 'diesel', 'coal', 'oil', 'lng', 'lpg']):
+            if 'm³' in indicator_name or 'm3' in indicator_name.lower():
+                return 'm3'
+            elif max_value > 10000:
+                return 'liters'
+            else:
+                return 'tonnes'
+
+        # Unitless / count patterns (incidents, employees, hours, etc.)
+        if any(keyword in indicator_name.lower() for keyword in [
+            'incident', 'accident', 'injur', 'fatalit', 'employee', 'worker',
+            'hour', 'count', 'number', 'rate', 'ratio', 'score', 'index',
+        ]):
+            return 'count'
 
         return None
 

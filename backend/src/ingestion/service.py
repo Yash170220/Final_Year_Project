@@ -117,6 +117,7 @@ class IngestionService:
                 "rows": df.height,
                 "columns": df.width,
             })
+            prov.flush()
 
             # Generate preview (first 5 rows)
             preview = self._generate_preview(df)
