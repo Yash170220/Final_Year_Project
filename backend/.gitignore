@@ -77,6 +77,20 @@ data/sample-inputs/*.xlsx
 data/sample-inputs/*.csv
 !data/sample-inputs/.gitkeep
 
-# Alembic migrations (generated)
-alembic/versions/*.py
-!alembic/versions/.gitkeep
+# Alembic (removed - using SQLAlchemy create_all)
+alembic/
+
+# ML Model cache (large binary files - auto-downloaded on first run)
+.model_cache/
+
+# Qdrant vector database storage (runtime data)
+data/qdrant_storage/
+
+# Provenance graph (runtime generated)
+data/provenance.ttl
+
+# Generated report outputs
+data/outputs/
+
+# DOCX templates (add manually if needed)
+data/templates/
