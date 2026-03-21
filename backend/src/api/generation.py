@@ -1,5 +1,7 @@
 """API endpoint for RAG-based narrative generation with AI recommendations."""
+import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -28,6 +30,14 @@ from src.generation.vector_store import VectorStore
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/generation", tags=["generation"])
+
+# Priority indicators — generate narratives for these first
+PRIORITY_INDICATORS = [
+    "Scope 1 GHG Emissions",
+    "Total Electricity Consumption",
+    "Total Water Consumption",
+    "Non-Hazardous Waste Generated",
+]
 
 _vector_store: VectorStore | None = None
 _rag_generator: RAGGenerator | None = None
@@ -77,20 +87,14 @@ def _load_validated_data(upload_id: UUID, db: Session) -> list[dict]:
         indicator_name = (
             r.indicator.matched_indicator if r.indicator else str(r.indicator_id)
         )
-        facility = None
-        period = None
-        upload = r.upload
-        if upload and upload.file_metadata:
-            facility = upload.file_metadata.get("facility_name")
-            period = upload.file_metadata.get("reporting_period")
-
         records.append({
             "data_id": str(r.id),
             "indicator": indicator_name,
             "value": r.normalized_value,
             "unit": r.normalized_unit,
-            "period": period or "",
-            "facility": facility or "",
+            # FIX: Use facility/period from NormalizedData columns directly
+            "period": r.period or "",
+            "facility": r.facility or "",
         })
     return records
 
@@ -99,6 +103,35 @@ def _push_to_qdrant(upload_id: UUID, records: list[dict], vs: VectorStore) -> in
     if not records:
         return 0
     return vs.add_validated_data(upload_id, records)
+
+
+def _generate_single(
+    rag: RAGGenerator,
+    section: str,
+    upload_id: UUID,
+    indicator: str,
+    framework: str,
+) -> NarrativeItem:
+    """Generate a single narrative — runs in thread pool."""
+    result = rag.generate_narrative(
+        section_type=section,
+        upload_id=upload_id,
+        indicator=indicator,
+        framework=framework,
+    )
+    cit_details = [
+        CitationDetail(**d)
+        for d in result["citations"].get("details", [])
+    ]
+    content_text = result["content"]
+    return NarrativeItem(
+        indicator=result["indicator"],
+        section=result["section_type"],
+        content=content_text,
+        citations=cit_details,
+        verification_rate=result["verification_rate"],
+        word_count=len(content_text.split()),
+    )
 
 
 @router.post(
@@ -112,6 +145,7 @@ def _push_to_qdrant(upload_id: UUID, records: list[dict], vs: VectorStore) -> in
     summary="Generate ESG report narratives",
     description=(
         "Generates grounded narratives for each section x indicator combination. "
+        "Runs in parallel for speed. Defaults to top 4 priority ESG indicators. "
         "Optionally includes AI-powered improvement recommendations."
     ),
 )
@@ -159,45 +193,54 @@ async def generate_narratives(
             status_code=500, detail=f"Failed to load data into vector store: {exc}"
         )
 
-    # Determine indicators — use all unique ones when not specified
+    # FIX: Limit to priority indicators by default to avoid 80+ sequential Groq calls
     indicators = body.indicators
     if not indicators:
-        indicators = sorted(set(d["indicator"] for d in validated_data))
+        all_indicators = sorted(set(d["indicator"] for d in validated_data))
+        # Use priority list if available, otherwise take first 4
+        indicators = [i for i in PRIORITY_INDICATORS if i in all_indicators]
+        if not indicators:
+            indicators = all_indicators[:4]
 
-    # Generate narratives
+    logger.info(f"Generating narratives for {len(indicators)} indicators x {len(body.sections)} sections")
+
+    # FIX: Run all narrative generations in parallel using ThreadPoolExecutor
+    # Groq calls are I/O-bound so parallelism gives ~5x speedup
+    loop = asyncio.get_event_loop()
+    tasks = [
+        (indicator, section)
+        for indicator in indicators
+        for section in body.sections
+    ]
+
     narratives: list[NarrativeItem] = []
-    for indicator in indicators:
-        for section in body.sections:
+    errors_encountered = []
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(
+                _generate_single, rag, section, upload_id, indicator, body.framework
+            ): (indicator, section)
+            for indicator, section in tasks
+        }
+
+        for future, (indicator, section) in futures.items():
             try:
-                result = rag.generate_narrative(
-                    section_type=section,
-                    upload_id=upload_id,
-                    indicator=indicator,
-                    framework=body.framework,
-                )
-                cit_details = [
-                    CitationDetail(**d)
-                    for d in result["citations"].get("details", [])
-                ]
-                content_text = result["content"]
-                narratives.append(
-                    NarrativeItem(
-                        indicator=result["indicator"],
-                        section=result["section_type"],
-                        content=content_text,
-                        citations=cit_details,
-                        verification_rate=result["verification_rate"],
-                        word_count=len(content_text.split()),
-                    )
-                )
+                narrative = future.result()
+                narratives.append(narrative)
             except Exception as exc:
-                logger.error(
-                    f"Narrative generation failed for {indicator}/{section}: {exc}"
-                )
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Groq generation failed for {indicator}/{section}: {exc}",
-                )
+                logger.error(f"Narrative failed for {indicator}/{section}: {exc}")
+                errors_encountered.append(f"{indicator}/{section}: {exc}")
+
+    if errors_encountered and not narratives:
+        raise HTTPException(
+            status_code=500,
+            detail=f"All narrative generations failed: {errors_encountered[0]}",
+        )
+
+    # Sort narratives by indicator then section for consistent ordering
+    section_order = {s: i for i, s in enumerate(body.sections)}
+    narratives.sort(key=lambda n: (n.indicator, section_order.get(n.section, 99)))
 
     # Recommendations
     recommendations: list[RecommendationItem] | None = None

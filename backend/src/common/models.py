@@ -120,6 +120,8 @@ class NormalizedData(Base):
     normalized_unit = Column(String(50), nullable=False)
     conversion_factor = Column(Float, nullable=False)
     conversion_source = Column(String(255), nullable=False)
+    facility = Column(String(255), nullable=True)   # Added: facility name from upload
+    period = Column(String(50), nullable=True)       # Added: reporting period (YYYY-MM)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -131,6 +133,8 @@ class NormalizedData(Base):
     __table_args__ = (
         Index("ix_normalized_data_upload_id", "upload_id"),
         Index("ix_normalized_data_indicator_id", "indicator_id"),
+        Index("ix_normalized_data_facility", "facility"),
+        Index("ix_normalized_data_period", "period"),
     )
 
     def __repr__(self):

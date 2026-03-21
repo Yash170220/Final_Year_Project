@@ -28,3 +28,20 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def init_db() -> None:
+    """Create all tables if they don't exist. Called on FastAPI startup."""
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        # Import all models so SQLAlchemy registers them against Base
+        from src.common.models import (  # noqa: F401
+            Base, Upload, MatchedIndicator, NormalizedData,
+            ValidationResult, AuditLog,
+        )
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created / verified OK")
+    except Exception as exc:
+        logger.error(f"init_db failed: {exc}")
+        raise

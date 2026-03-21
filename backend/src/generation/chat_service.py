@@ -12,7 +12,7 @@ from src.generation.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
-SIMILARITY_THRESHOLD = 0.6
+SIMILARITY_THRESHOLD = 0.5   # FIX: was 0.6 — too strict, many valid questions were rejected
 MAX_HISTORY = 10
 HISTORY_TTL = 86400  # 24 hours
 
@@ -21,12 +21,18 @@ FORBIDDEN_TOPICS = [
     "medical", "political", "write code", "hack",
 ]
 
+# FIX: Expanded keyword list — "brsr", "gri", "report", "benchmark", "trend",
+#      "year", "month", "quarter" are common ESG chat queries that were being
+#      rejected by _validate_question
 VALID_KEYWORDS = [
     "electricity", "emission", "water", "waste",
     "energy", "scope", "consumption", "production",
     "facility", "plant", "total", "average", "compare",
     "fuel", "gas", "carbon", "ghg", "renewable",
     "intensity", "reduction", "recycle", "discharge",
+    "brsr", "gri", "report", "benchmark", "trend",
+    "year", "month", "quarter", "highest", "lowest",
+    "summary", "overview", "performance", "target",
 ]
 
 
@@ -79,8 +85,9 @@ class ChatService:
 
         history = self._get_history(session_id)
 
+        # FIX: top_k reduced from 5 → 3 — less noise, faster, more focused answers
         search_results = self.vector_store.search_validated_data(
-            query=question, upload_id=upload_id, top_k=5
+            query=question, upload_id=upload_id, top_k=3
         )
 
         if not search_results or search_results[0]["similarity"] < SIMILARITY_THRESHOLD:
@@ -102,9 +109,9 @@ class ChatService:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.1,
-                max_tokens=500,
+                max_tokens=300,   # FIX: was 500 — chat answers should be short; 300 is enough
             )
-            answer = completion.choices[0].message.content
+            answer = completion.choices[0].message.content.strip()
         except Exception as exc:
             logger.error(f"Groq chat error: {exc}")
             answer = "Sorry, I encountered an error generating a response. Please try again."
@@ -135,23 +142,25 @@ class ChatService:
 
     @staticmethod
     def _system_prompt() -> str:
+        # FIX: Added explicit instruction to answer naturally even with partial data,
+        #      instead of always saying "not available" when similarity is borderline.
         return (
             "You are an ESG data assistant. Answer questions using ONLY the "
             "provided data context.\n\n"
             "STRICT RULES:\n"
             "1. Use ONLY facts from the data provided below.\n"
-            "2. If information is not in data, say: "
-            '"This information is not available in the uploaded data."\n'
-            '3. Cite sources: "According to the data, [fact] '
-            '[Source: facility/period]."\n'
-            "4. Be concise (2-3 sentences max).\n"
-            "5. Never use external knowledge or general ESG information.\n"
-            "6. For comparisons, only compare data that exists in the upload.\n\n"
+            "2. If information is not in the data, say exactly: "
+            '"This metric is not available in the uploaded data."\n'
+            '3. Cite sources inline: "[Source: {facility} / {period}]"\n'
+            "4. Be concise — 2-4 sentences max.\n"
+            "5. Never use external ESG knowledge or industry benchmarks unless explicitly asked.\n"
+            "6. For comparisons, only compare data that exists in the upload.\n"
+            "7. If you can partially answer, do so and state what is missing.\n\n"
             "FORMAT:\n"
-            "- Answer the question directly.\n"
-            "- Reference specific values with units.\n"
-            "- Mention facility and time period.\n"
-            "- Keep it factual and brief."
+            "- Answer directly in 1-2 sentences.\n"
+            "- Include specific value + unit + facility + period.\n"
+            "- End with source citation.\n"
+            "- No bullet points unless listing multiple facilities."
         )
 
     @staticmethod
@@ -160,15 +169,20 @@ class ChatService:
         data: List[Dict],
         history: List[Dict],
     ) -> str:
-        data_context = "\n".join(
-            f"- {d['facility']} in {d['period']}: "
-            f"{d['indicator']} = {d['value']} {d['unit']}"
-            for d in data[:5]
-        )
+        # FIX: Structured data context more clearly with numbered entries
+        #      so the LLM can reference them without confusion
+        data_lines = []
+        for i, d in enumerate(data[:3], 1):
+            data_lines.append(
+                f"[{i}] Facility: {d['facility']} | Period: {d['period']} | "
+                f"Indicator: {d['indicator']} | Value: {d['value']} {d['unit']}"
+            )
+        data_context = "\n".join(data_lines)
 
         history_text = ""
         if history:
-            recent = history[-4:]
+            # FIX: Reduced from last 4 to last 3 exchanges — keeps context tight
+            recent = history[-3:]
             history_text = (
                 "Previous conversation:\n"
                 + "\n".join(
@@ -179,10 +193,10 @@ class ChatService:
 
         return (
             f"{history_text}"
-            f"Current question: {question}\n\n"
-            f"Available data from upload:\n{data_context}\n\n"
-            f"Answer based ONLY on the data above. "
-            f"If the question cannot be answered with this data, say so."
+            f"Question: {question}\n\n"
+            f"Available data:\n{data_context}\n\n"
+            f"Answer using ONLY the data above. "
+            f"If the question cannot be answered with this data, say so clearly."
         )
 
     # ------------------------------------------------------------------

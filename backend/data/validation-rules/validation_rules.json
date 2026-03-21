@@ -2,16 +2,16 @@
   "cement_industry": {
     "emission_intensity": {
       "rule_name": "cement_emission_range",
-      "description": "Cement production emissions typically 800-1,100 kg CO₂/tonne clinker",
-      "indicator": "Scope 1 GHG Emissions per tonne clinker",
+      "description": "Cement production emissions typically 800-1,100 kg CO\u2082/tonne clinker",
+      "indicator": "Scope 1 GHG Emissions Intensity",
       "severity": "error",
       "validation_type": "range",
       "parameters": {
         "min": 800,
         "max": 1100,
-        "unit": "kg CO₂/tonne"
+        "unit": "kg CO\u2082/tonne"
       },
-      "citation": "Andrew (2019) - Global CO₂ emissions from cement production",
+      "citation": "Andrew (2019) - Global CO\u2082 emissions from cement production",
       "error_message": "Cement emissions outside typical range. Possible unit error or data entry mistake.",
       "suggested_fixes": [
         "Check if value should be in tonnes instead of kg (divide by 1000)",
@@ -22,7 +22,7 @@
     "energy_intensity": {
       "rule_name": "cement_energy_range",
       "description": "Thermal and electrical energy consumption for cement production",
-      "indicator": "Energy consumption per tonne clinker",
+      "indicator": "Total Electricity Consumption Intensity",
       "validation_type": "range",
       "parameters": {
         "min": 2.9,
@@ -61,12 +61,12 @@
     "bf_bof_emissions": {
       "rule_name": "steel_bf_bof_range",
       "description": "Blast furnace + basic oxygen furnace route emissions",
-      "indicator": "Scope 1 GHG Emissions per tonne crude steel (BF-BOF)",
+      "indicator": "Scope 1 GHG Emissions Intensity",
       "validation_type": "range",
       "parameters": {
         "min": 1800,
         "max": 2500,
-        "unit": "kg CO₂/tonne crude steel"
+        "unit": "kg CO\u2082/tonne crude steel"
       },
       "severity": "error",
       "citation": "Bataille et al. (2021) - A review of technology and policy deep decarbonization pathway options for making energy-intensive industry production consistent with the Paris Agreement",
@@ -80,12 +80,12 @@
     "eaf_emissions": {
       "rule_name": "steel_eaf_range",
       "description": "Electric arc furnace route using scrap steel",
-      "indicator": "Scope 1 GHG Emissions per tonne crude steel (EAF)",
+      "indicator": "Scope 1 GHG Emissions Intensity",
       "validation_type": "range",
       "parameters": {
         "min": 400,
         "max": 600,
-        "unit": "kg CO₂/tonne crude steel"
+        "unit": "kg CO\u2082/tonne crude steel"
       },
       "severity": "error",
       "citation": "Bataille et al. (2021) - IEA Steel Technology Roadmap",
@@ -99,7 +99,7 @@
     "energy_consumption": {
       "rule_name": "steel_energy_intensity",
       "description": "Total energy consumption for steel production",
-      "indicator": "Energy intensity per tonne crude steel",
+      "indicator": "Total Electricity Consumption Intensity",
       "validation_type": "range",
       "parameters": {
         "min": 18,
@@ -124,7 +124,7 @@
       "parameters": {
         "min": 4,
         "max": 12,
-        "unit": "tonnes CO₂e/vehicle"
+        "unit": "tonnes CO\u2082e/vehicle"
       },
       "severity": "warning",
       "citation": "ICCT (2020) - Life Cycle Assessment of Automotive Manufacturing",
@@ -156,12 +156,12 @@
     "water_consumption": {
       "rule_name": "automotive_water_intensity",
       "description": "Water consumption in automotive manufacturing",
-      "indicator": "Water consumption per vehicle",
+      "indicator": "Total Water Consumption Intensity",
       "validation_type": "range",
       "parameters": {
         "min": 3,
         "max": 8,
-        "unit": "m³/vehicle"
+        "unit": "m\u00b3/vehicle"
       },
       "severity": "warning",
       "citation": "World Business Council for Sustainable Development - Water in Manufacturing",
@@ -236,13 +236,13 @@
       "validation_type": "pattern_match",
       "parameters": {
         "allowed_patterns": [
-          "kg CO₂",
-          "kg CO₂e",
-          "tonnes CO₂",
-          "tonnes CO₂e",
+          "kg CO\u2082",
+          "kg CO\u2082e",
+          "tonnes CO\u2082",
+          "tonnes CO\u2082e",
           "GJ",
           "MWh",
-          "m³",
+          "m\u00b3",
           "L"
         ]
       },
@@ -251,7 +251,7 @@
       "error_message": "Unit notation does not follow standard conventions.",
       "suggested_fixes": [
         "Standardize unit notation across all data",
-        "Use CO₂e for aggregated GHG emissions",
+        "Use CO\u2082e for aggregated GHG emissions",
         "Apply consistent SI prefixes (kg, tonnes, not tons)"
       ]
     },
@@ -276,7 +276,7 @@
     },
     "biogenic_carbon": {
       "rule_name": "biogenic_co2_reporting",
-      "description": "Biogenic CO₂ should be reported separately from fossil CO₂",
+      "description": "Biogenic CO\u2082 should be reported separately from fossil CO\u2082",
       "indicator": "Biogenic carbon accounting",
       "validation_type": "category_check",
       "parameters": {
@@ -285,9 +285,9 @@
       },
       "severity": "warning",
       "citation": "GHG Protocol - Treatment of Biogenic Carbon",
-      "error_message": "Biogenic CO₂ may be improperly included in Scope totals.",
+      "error_message": "Biogenic CO\u2082 may be improperly included in Scope totals.",
       "suggested_fixes": [
-        "Report biogenic CO₂ separately from fossil emissions",
+        "Report biogenic CO\u2082 separately from fossil emissions",
         "Verify biomass fuel sources and carbon neutrality claims",
         "Document biogenic accounting methodology"
       ]
@@ -343,7 +343,7 @@
       "parameters": {
         "min": 0.1,
         "max": 1.2,
-        "unit": "kg CO₂e/kWh"
+        "unit": "kg CO\u2082e/kWh"
       },
       "severity": "warning",
       "citation": "IEA - World Energy Outlook, Regional Grid Factors",
@@ -406,9 +406,9 @@
       "parameters": {
         "max_decimal_places": 2,
         "applies_to_units": [
-          "tonnes CO₂e",
+          "tonnes CO\u2082e",
           "MWh",
-          "m³"
+          "m\u00b3"
         ]
       },
       "severity": "warning",
@@ -428,7 +428,12 @@
       "indicator": "Scope totals validation",
       "validation_type": "cross_field",
       "parameters": {
-        "fields": ["scope_1", "scope_2", "scope_3", "total_emissions"],
+        "fields": [
+          "scope_1",
+          "scope_2",
+          "scope_3",
+          "total_emissions"
+        ],
         "relationship": "sum",
         "tolerance": 0.02
       },
@@ -448,7 +453,11 @@
       "indicator": "Scope relationship validation",
       "validation_type": "cross_field",
       "parameters": {
-        "fields": ["scope_1", "scope_2", "total_emissions"],
+        "fields": [
+          "scope_1",
+          "scope_2",
+          "total_emissions"
+        ],
         "relationship": "subset",
         "tolerance": 0.0
       },
@@ -468,7 +477,13 @@
       "indicator": "Energy balance validation",
       "validation_type": "cross_field",
       "parameters": {
-        "fields": ["electricity", "natural_gas", "fuel_oil", "steam", "total_energy"],
+        "fields": [
+          "electricity",
+          "natural_gas",
+          "fuel_oil",
+          "steam",
+          "total_energy"
+        ],
         "relationship": "sum",
         "tolerance": 0.05
       },
@@ -489,9 +504,15 @@
       "indicator": "Production-energy correlation",
       "validation_type": "cross_field",
       "parameters": {
-        "fields": ["energy_consumption", "production_volume"],
+        "fields": [
+          "energy_consumption",
+          "production_volume"
+        ],
         "relationship": "correlation",
-        "intensity_range": {"min": 0.5, "max": 50}
+        "intensity_range": {
+          "min": 0.5,
+          "max": 50
+        }
       },
       "severity": "warning",
       "citation": "Industrial Energy Efficiency Best Practices",
@@ -509,7 +530,10 @@
       "indicator": "Production-emission correlation",
       "validation_type": "cross_field",
       "parameters": {
-        "fields": ["emissions", "production_volume"],
+        "fields": [
+          "emissions",
+          "production_volume"
+        ],
         "relationship": "correlation",
         "anomaly_threshold": 3.0
       },
@@ -529,7 +553,10 @@
       "indicator": "Material balance validation",
       "validation_type": "cross_field",
       "parameters": {
-        "fields": ["waste_generated", "raw_materials_consumed"],
+        "fields": [
+          "waste_generated",
+          "raw_materials_consumed"
+        ],
         "relationship": "subset",
         "tolerance": 0.1
       },
@@ -549,7 +576,10 @@
       "indicator": "Water balance validation",
       "validation_type": "cross_field",
       "parameters": {
-        "fields": ["water_discharge", "water_withdrawal"],
+        "fields": [
+          "water_discharge",
+          "water_withdrawal"
+        ],
         "relationship": "subset",
         "tolerance": 0.0
       },
@@ -569,7 +599,10 @@
       "indicator": "Renewable energy validation",
       "validation_type": "cross_field",
       "parameters": {
-        "fields": ["renewable_energy", "total_energy"],
+        "fields": [
+          "renewable_energy",
+          "total_energy"
+        ],
         "relationship": "subset",
         "tolerance": 0.0
       },
@@ -585,4 +618,3 @@
     }
   }
 }
-
