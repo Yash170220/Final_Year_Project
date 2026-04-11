@@ -80,13 +80,13 @@ export default function Home() {
   }
 
   const steps = [
-    { n:'01', label:'Ingest', color:'#FFD4B8', bg:'rgba(255,212,184,0.12)', icon:'‚¨Ü', desc:'Upload Excel, CSV, or PDF from any facility. Handles merged cells, inconsistent headers, and multi-sheet workbooks ‚Äî zero manual prep required.' },
-    { n:'02', label:'Match', color:'#D4AF37', bg:'rgba(212,175,55,0.1)', icon:'‚óé', desc:'Hybrid rule + LLM matching maps your headers to standard ESG indicators. 91% auto-approval rate. Ambiguous items flagged with AI reasoning.' },
-    { n:'03', label:'Normalize', color:'#C8D5B9', bg:'rgba(200,213,185,0.15)', icon:'‚öñ', desc:'50+ conversion factors. kWh ‚Üí MWh, kg CO‚ÇÇ ‚Üí tonnes CO‚ÇÇe. Every conversion source documented for full audit compliance.' },
-    { n:'04', label:'Validate', color:'#B8C9A8', bg:'rgba(184,201,168,0.15)', icon:'‚úì', desc:'Industry-specific rules: cement 800‚Äì1,100 kg CO‚ÇÇ/tonne, steel BF-BOF 1,800‚Äì2,500. Z-score outlier detection at 87% accuracy.' },
-    { n:'05', label:'Generate', color:'#D4AF37', bg:'rgba(212,175,55,0.1)', icon:'‚ú¶', desc:'RAG narratives grounded in your actual validated data via Qdrant vector search. 100% citation traceability ‚Äî zero hallucination guaranteed.' },
-    { n:'06', label:'Review', color:'#E89C7F', bg:'rgba(232,156,127,0.12)', icon:'‚óâ', desc:'Human-in-the-loop dashboard surfaces low-confidence matches and flagged items. Approve, correct, or override with full audit logging.' },
-    { n:'07', label:'Export', color:'#B87333', bg:'rgba(184,115,51,0.12)', icon:'‚Üì', desc:'BRSR Core, GRI Universal 2021, and CSRD simultaneously. Download DOCX, Excel, or PDF ‚Äî with W3C PROV audit trail embedded.' },
+    { n:'01', label:'Ingest', color:'#FFD4B8', bg:'rgba(255,212,184,0.12)', icon:'?', desc:'Upload Excel, CSV, or PDF from any facility. Handles merged cells, inconsistent headers, and multi-sheet workbooks — zero manual prep required.' },
+    { n:'02', label:'Match', color:'#D4AF37', bg:'rgba(212,175,55,0.1)', icon:'?', desc:'Hybrid rule + LLM matching maps your headers to standard ESG indicators. 91% auto-approval rate. Ambiguous items flagged with AI reasoning.' },
+    { n:'03', label:'Normalize', color:'#C8D5B9', bg:'rgba(200,213,185,0.15)', icon:'?', desc:'50+ conversion factors. kWh ? MWh, kg CO? ? tonnes CO?e. Every conversion source documented for full audit compliance.' },
+    { n:'04', label:'Validate', color:'#B8C9A8', bg:'rgba(184,201,168,0.15)', icon:'?', desc:'Industry-specific rules: cement 800–1,100 kg CO?/tonne, steel BF-BOF 1,800–2,500. Z-score outlier detection at 87% accuracy.' },
+    { n:'05', label:'Generate', color:'#D4AF37', bg:'rgba(212,175,55,0.1)', icon:'?', desc:'RAG narratives grounded in your actual validated data via Qdrant vector search. 100% citation traceability — zero hallucination guaranteed.' },
+    { n:'06', label:'Review', color:'#E89C7F', bg:'rgba(232,156,127,0.12)', icon:'?', desc:'Human-in-the-loop dashboard surfaces low-confidence matches and flagged items. Approve, correct, or override with full audit logging.' },
+    { n:'07', label:'Export', color:'#B87333', bg:'rgba(184,115,51,0.12)', icon:'?', desc:'BRSR Core, GRI Universal 2021, and CSRD simultaneously. Download DOCX, Excel, or PDF — with W3C PROV audit trail embedded.' },
   ]
 
   return (
@@ -296,9 +296,9 @@ export default function Home() {
         <div className="hero-ct">
           <p className="ha d1 hero-ey">AI-Powered ESG Reporting Platform</p>
           <h1 className="ha d2 hero-h1">Automated ESG Reporting<br/>for High-Impact<br/>Manufacturing</h1>
-          <p className="ha d3 hero-bd">Truvexis transforms weeks of manual ESG compliance into a fully automated pipeline ‚Äî from raw facility data to audit-ready reports in under two hours.</p>
+          <p className="ha d3 hero-bd">Truvexis transforms weeks of manual ESG compliance into a fully automated pipeline — from raw facility data to audit-ready reports in under two hours.</p>
           <div className="ha d4" style={{display:'flex',gap:'16px',flexWrap:'wrap'}}>
-            <button className="bf" onClick={()=>{setAuthError('');setAuthTab('signup');setAuthOpen(true)}}>Get Started Free ‚Üí</button>
+            <button className="bf" onClick={()=>{setAuthError('');setAuthTab('signup');setAuthOpen(true)}}>Get Started Free ?</button>
             <a href="#why" className="lk lk-lt">Learn more</a>
           </div>
         </div>
@@ -311,11 +311,11 @@ export default function Home() {
         <div className="intro-l">
           <R t="l">
             <p className="eye eye-cu">About Truvexis</p>
-            <p className="pron">\ ÀàtruÀê-vek-sis \</p>
+            <p className="pron">\ ?tru?-vek-sis \</p>
             <h2 className="h2 h2-dk">The Name Reflects<br/>Our Mission</h2>
-            <p className="bd bd-dk">Truvexis combines <em>true</em> ‚Äî grounded in verifiable data ‚Äî and <em>nexis</em> ‚Äî the connecting thread between source and disclosure.</p>
-            <div className="defn">Manufacturing companies spend 5‚Äì6 weeks and ‚Çπ5,00,000 every year producing ESG reports that often can't be traced. Truvexis solves both problems at once.</div>
-            <a href="#how" className="lk lk-cu">Explore the platform ‚Üí</a>
+            <p className="bd bd-dk">Truvexis combines <em>true</em> — grounded in verifiable data — and <em>nexis</em> — the connecting thread between source and disclosure.</p>
+            <div className="defn">Manufacturing companies spend 5–6 weeks and ?5,00,000 every year producing ESG reports that often can't be traced. Truvexis solves both problems at once.</div>
+            <a href="#how" className="lk lk-cu">Explore the platform ?</a>
           </R>
         </div>
         <div className="intro-r">
@@ -335,8 +335,8 @@ export default function Home() {
             <R t="r">
               <p className="eye eye-cu">The Technology</p>
               <h2 className="h2 h2-dk">A Purpose-Built<br/>AI Pipeline</h2>
-              <p className="bd bd-dk">We built a 7-stage AI pipeline specifically for manufacturing ESG compliance ‚Äî handling inconsistent formats, mapping to BRSR and GRI standards, validating against benchmarks, and generating fully cited narratives automatically.</p>
-              <a href="#how" className="lk lk-cu" style={{marginTop:'28px'}}>Explore the pipeline ‚Üí</a>
+              <p className="bd bd-dk">We built a 7-stage AI pipeline specifically for manufacturing ESG compliance — handling inconsistent formats, mapping to BRSR and GRI standards, validating against benchmarks, and generating fully cited narratives automatically.</p>
+              <a href="#how" className="lk lk-cu" style={{marginTop:'28px'}}>Explore the pipeline ?</a>
             </R>
           </div>
         </div>
@@ -348,14 +348,14 @@ export default function Home() {
           <R t="l">
             <p className="eye eye-cu">Platform Performance</p>
             <h2 className="h2 h2-dk">Intelligent Systems</h2>
-            <p className="bd bd-dk">Groq LLM inference for speed, Qdrant vector search for grounded narratives, W3C PROV-DM for complete data lineage ‚Äî fast, accurate, fully auditable.</p>
+            <p className="bd bd-dk">Groq LLM inference for speed, Qdrant vector search for grounded narratives, W3C PROV-DM for complete data lineage — fast, accurate, fully auditable.</p>
           </R>
         </div>
         <div className="spec-r">
           <R t="r" d={120}>
             <div className="spec-card">
               <div className="spec-hd">Truvexis Platform</div>
-              {[['Frameworks','BRSR ¬∑ GRI ¬∑ CSRD'],['Pipeline Time','Under 2 hours'],['Matching Accuracy','91% auto-approved'],['Normalization Rate','98% success'],['Validation Detection','87% detection'],['Citation Traceability','100%'],['Audit Standard','W3C PROV-DM']].map(([k,v])=>(
+              {[['Frameworks','BRSR · GRI · CSRD'],['Pipeline Time','Under 2 hours'],['Matching Accuracy','91% auto-approved'],['Normalization Rate','98% success'],['Validation Detection','87% detection'],['Citation Traceability','100%'],['Audit Standard','W3C PROV-DM']].map(([k,v])=>(
                 <div key={k} className="spec-row"><span className="sk">{k}</span><span className="sv">{v}</span></div>
               ))}
             </div>
@@ -372,7 +372,7 @@ export default function Home() {
           {[
             {n:'01',t:'Data Ingestion',d:'Excel, CSV, PDF from any facility. Merged cells, mixed units, multi-sheet workbooks handled automatically.'},
             {n:'02',t:'AI Matching',d:'Rule + LLM hybrid at 91% auto-approval. 50+ unit conversions across energy, emissions, water, waste.'},
-            {n:'03',t:'RAG Narratives',d:'Every sentence grounded in your actual data. 100% citation traceability ‚Äî zero hallucination.'},
+            {n:'03',t:'RAG Narratives',d:'Every sentence grounded in your actual data. 100% citation traceability — zero hallucination.'},
             {n:'04',t:'Multi-Framework Export',d:'BRSR, GRI 2021, CSRD simultaneously. DOCX, Excel, PDF with W3C PROV audit trail.'},
           ].map((c,i)=>(
             <R key={i} d={i*80}>
@@ -408,8 +408,8 @@ export default function Home() {
       <div className="stats">
         {[
           {n:'99.98',em:'%',u:'Time Reduction',d:'From 240 hours of manual work to 63 seconds of automated pipeline processing.'},
-          {n:'3',em:'',u:'Frameworks at Once',d:'BRSR, GRI, and CSRD ‚Äî one upload, three compliant outputs.'},
-          {n:'‚Çπ5L',em:'',u:'Saved Annually',d:'Eliminate consultant fees, staff overtime, and rework costs entirely.'},
+          {n:'3',em:'',u:'Frameworks at Once',d:'BRSR, GRI, and CSRD — one upload, three compliant outputs.'},
+          {n:'?5L',em:'',u:'Saved Annually',d:'Eliminate consultant fees, staff overtime, and rework costs entirely.'},
         ].map((s,i)=>(
           <R key={i} d={i*100}>
             <div className="stat">
@@ -433,7 +433,7 @@ export default function Home() {
           </R>
           <div className="ind-sc">
             {[
-              {l:'Cement',t:'Automated ESG for Cement Manufacturing',d:'Scope 1 intensity (800‚Äì1,100 kg CO‚ÇÇ/tonne clinker), energy normalization, BRSR Principle 6 narratives.',i:'https://images.unsplash.com/photo-1567521464027-f127ff144326?w=700&q=85'},
+              {l:'Cement',t:'Automated ESG for Cement Manufacturing',d:'Scope 1 intensity (800–1,100 kg CO?/tonne clinker), energy normalization, BRSR Principle 6 narratives.',i:'https://images.unsplash.com/photo-1567521464027-f127ff144326?w=700&q=85'},
               {l:'Steel',t:'Precision Reporting for BF-BOF and EAF Steel',d:'Route-specific validation benchmarked against GRI 305 and BRSR industry averages.',i:'https://images.unsplash.com/photo-1538688525198-9b88f6f53126?w=700&q=85'},
               {l:'Automotive',t:'Vehicle-Level ESG Metrics, Automated',d:'Per-vehicle emission and energy intensity mapped to CSRD for automotive OEMs.',i:'https://images.unsplash.com/photo-1593941707882-a5bba14938c7?w=700&q=85'},
               {l:'Chemical',t:'Multi-Site Chemical Plant Reporting',d:'Consolidated GRI 302, 303, 305, 306 disclosures across multiple facilities.',i:'https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=700&q=85'},
@@ -444,7 +444,7 @@ export default function Home() {
                   <div className="ind-lb">{ind.l}</div>
                   <div className="ind-t">{ind.t}</div>
                   <p className="ind-d">{ind.d}</p>
-                  <span className="ind-lk">Learn more ‚Üí</span>
+                  <span className="ind-lk">Learn more ?</span>
                 </div>
               </div>
             ))}
@@ -462,8 +462,8 @@ export default function Home() {
             <p className="eye eye-lt">Reporting as a Service</p>
             <h2 className="h2 h2-lt" style={{marginBottom:'22px'}}>We Process the Data.<br/>You Sign the Report.</h2>
             <p className="bd bd-lt">Upload raw facility data. Receive complete, audit-ready ESG disclosures. No consultants. No manual aggregation. No rework cycles.</p>
-            <p className="bd bd-lt" style={{marginTop:'16px'}}>Every number traces back to its source through W3C PROV-DM graphs ‚Äî exportable for independent verification.</p>
-            <button className="bf" style={{marginTop:'32px',width:'fit-content'}} onClick={()=>{setAuthError('');setAuthTab('signup');setAuthOpen(true)}}>Get Started Free ‚Üí</button>
+            <p className="bd bd-lt" style={{marginTop:'16px'}}>Every number traces back to its source through W3C PROV-DM graphs — exportable for independent verification.</p>
+            <button className="bf" style={{marginTop:'32px',width:'fit-content'}} onClick={()=>{setAuthError('');setAuthTab('signup');setAuthOpen(true)}}>Get Started Free ?</button>
           </R>
         </div>
       </section>
@@ -474,7 +474,7 @@ export default function Home() {
           <h2 className="cta-h">From 6 Weeks to<br/><em>Under 2 Hours.</em></h2>
           <p className="cta-b">Built as a CSUF thesis on AI-driven ESG automation for high-impact manufacturing.</p>
           <div className="cta-ac">
-            <button className="bf" onClick={()=>{setAuthError('');setAuthTab('signup');setAuthOpen(true)}}>Start for Free ‚Üí</button>
+            <button className="bf" onClick={()=>{setAuthError('');setAuthTab('signup');setAuthOpen(true)}}>Start for Free ?</button>
           </div>
         </R>
       </section>
@@ -483,7 +483,7 @@ export default function Home() {
       <footer className="ft">
         <div className="ft-in">
           <span className="ft-lg">Truvexis</span>
-          <div className="ft-md">Built by Yash Dusane ¬∑ CSUF CPSC 589 ¬∑ 2025<br/>Advisor: Prof. Dr. Kenneth Kung</div>
+          <div className="ft-md">Built by Yash Dusane · CSUF CPSC 589 · 2025<br/>Advisor: Prof. Dr. Kenneth Kung</div>
           <div className="ft-lk">
             <a href="#">BRSR</a><a href="#">GRI</a><a href="#">CSRD</a><a href="#">GitHub</a>
           </div>
@@ -496,7 +496,7 @@ export default function Home() {
           <div className="auth-box">
             <div className="auth-hd">
               <span className="auth-logo">Truvexis</span>
-              <button className="auth-x" onClick={()=>{setAuthOpen(false);setAuthError('')}}>‚úï</button>
+              <button className="auth-x" onClick={()=>{setAuthOpen(false);setAuthError('')}}>?</button>
             </div>
             <div className="auth-tabs">
               <button className={`auth-tab${authTab==='signin'?' active':''}`} onClick={()=>{setAuthTab('signin');setAuthError('')}}>Sign In</button>
@@ -540,14 +540,14 @@ export default function Home() {
               <div style={authTab==='signup'?{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'16px'}:{}}>
                 <div className="auth-field">
                   <label className="auth-label">Password</label>
-                  <input className="auth-input" type="password" placeholder="‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢"
+                  <input className="auth-input" type="password" placeholder="••••••••"
                     value={authForm.password} onChange={e=>setAuthForm(f=>({...f,password:e.target.value}))}
                     onKeyDown={e=>{if(e.key==='Enter') handleAuth()}}/>
                 </div>
                 {authTab==='signup' && (
                   <div className="auth-field">
                     <label className="auth-label">Confirm Password</label>
-                    <input className="auth-input" type="password" placeholder="‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢"
+                    <input className="auth-input" type="password" placeholder="••••••••"
                       value={authForm.confirm} onChange={e=>setAuthForm(f=>({...f,confirm:e.target.value}))}
                       style={authForm.confirm && authForm.confirm!==authForm.password?{borderColor:'#C0392B'}:{}}
                       onKeyDown={e=>{if(e.key==='Enter') handleAuth()}}/>
@@ -560,7 +560,7 @@ export default function Home() {
               <button className="auth-submit" onClick={handleAuth} disabled={authLoading}
                 style={{background: authLoading ? '#8D8D8D' : '#3E2723'}}>
                 {authLoading && <span className="spin"/>}
-                {authLoading ? 'Please wait...' : authTab==='signin' ? 'Sign In ‚Üí' : 'Create Account ‚Üí'}
+                {authLoading ? 'Please wait...' : authTab==='signin' ? 'Sign In ?' : 'Create Account ?'}
               </button>
 
               <p className="auth-switch">
