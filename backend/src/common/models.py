@@ -2,11 +2,10 @@
 import enum
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Enum, Float, ForeignKey, 
-    Index, Integer, JSON, String, Text
+    Boolean, Column, DateTime, Enum, Float, ForeignKey,
+    Index, JSON, String, Text
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
@@ -15,14 +14,12 @@ Base = declarative_base()
 
 
 class FileType(str, enum.Enum):
-    """File type enumeration"""
     XLSX = "xlsx"
     CSV = "csv"
     PDF = "pdf"
 
 
 class UploadStatus(str, enum.Enum):
-    """Upload status enumeration"""
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -30,25 +27,46 @@ class UploadStatus(str, enum.Enum):
 
 
 class MatchingMethod(str, enum.Enum):
-    """Matching method enumeration"""
     RULE = "rule"
     LLM = "llm"
     MANUAL = "manual"
 
 
 class Severity(str, enum.Enum):
-    """Validation severity enumeration"""
     ERROR = "error"
     WARNING = "warning"
 
 
 class AuditAction(str, enum.Enum):
-    """Audit action enumeration"""
     CREATED = "created"
     UPDATED = "updated"
     DELETED = "deleted"
     REVIEWED = "reviewed"
     NORMALIZE = "normalize"
+
+
+# ?? NEW: User model ??????????????????????????????????????????
+class User(Base):
+    """User accounts"""
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, unique=True)
+    company = Column(String(255), nullable=True)
+    industry = Column(String(100), nullable=True)
+    hashed_password = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_users_email", "email"),
+    )
+
+    def __repr__(self):
+        return f"<User(id={self.id}, email={self.email}, company={self.company})>"
+# ?????????????????????????????????????????????????????????????
 
 
 class Upload(Base):
@@ -65,7 +83,6 @@ class Upload(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
     matched_indicators = relationship("MatchedIndicator", back_populates="upload", cascade="all, delete-orphan")
     normalized_data = relationship("NormalizedData", back_populates="upload", cascade="all, delete-orphan")
 
@@ -93,7 +110,6 @@ class MatchedIndicator(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
     upload = relationship("Upload", back_populates="matched_indicators")
     normalized_data = relationship("NormalizedData", back_populates="indicator", cascade="all, delete-orphan")
 
@@ -104,7 +120,7 @@ class MatchedIndicator(Base):
     )
 
     def __repr__(self):
-        return f"<MatchedIndicator(id={self.id}, original={self.original_header}, matched={self.matched_indicator}, score={self.confidence_score})>"
+        return f"<MatchedIndicator(id={self.id}, original={self.original_header}, matched={self.matched_indicator})>"
 
 
 class NormalizedData(Base):
@@ -120,12 +136,11 @@ class NormalizedData(Base):
     normalized_unit = Column(String(50), nullable=False)
     conversion_factor = Column(Float, nullable=False)
     conversion_source = Column(String(255), nullable=False)
-    facility = Column(String(255), nullable=True)   # Added: facility name from upload
-    period = Column(String(50), nullable=True)       # Added: reporting period (YYYY-MM)
+    facility = Column(String(255), nullable=True)
+    period = Column(String(50), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
     upload = relationship("Upload", back_populates="normalized_data")
     indicator = relationship("MatchedIndicator", back_populates="normalized_data")
     validation_results = relationship("ValidationResult", back_populates="data", cascade="all, delete-orphan")
@@ -155,7 +170,6 @@ class ValidationResult(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
     data = relationship("NormalizedData", back_populates="validation_results")
 
     __table_args__ = (
@@ -165,7 +179,7 @@ class ValidationResult(Base):
     )
 
     def __repr__(self):
-        return f"<ValidationResult(id={self.id}, rule={self.rule_name}, valid={self.is_valid}, severity={self.severity})>"
+        return f"<ValidationResult(id={self.id}, rule={self.rule_name}, valid={self.is_valid})>"
 
 
 class AuditLog(Base):
@@ -190,4 +204,4 @@ class AuditLog(Base):
     )
 
     def __repr__(self):
-        return f"<AuditLog(id={self.id}, entity_type={self.entity_type}, action={self.action}, actor={self.actor})>"
+        return f"<AuditLog(id={self.id}, entity_type={self.entity_type}, action={self.action})>"

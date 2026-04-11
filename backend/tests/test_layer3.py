@@ -17,6 +17,8 @@ from src.generation.vector_store import (
     VectorStore,
 )
 
+from tests.auth_helpers import attach_mock_auth_user
+
 UPLOAD_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
 SAMPLE_RECORDS = [
@@ -433,6 +435,7 @@ class TestGenerationAPI:
 
         self.app = app
         self.get_db = get_db
+        attach_mock_auth_user(app)
         self.client = TestClient(app)
 
     @patch("src.api.generation._get_vector_store")
@@ -511,6 +514,8 @@ class TestProvenanceAPI:
     @pytest.fixture(autouse=True)
     def _setup(self):
         from src.main import app
+
+        attach_mock_auth_user(app)
         self.client = TestClient(app)
 
     @patch("src.api.provenance.get_provenance_tracker")

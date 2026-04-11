@@ -25,9 +25,9 @@ def cement_emission_record():
         id=uuid4(),
         indicator="Scope 1 GHG Emissions per tonne clinker",
         value=950.0,
-        unit="kg CO₂/tonne",
+        unit="kg CO?/tonne",
         original_value=950.0,
-        original_unit="kg CO₂/tonne",
+        original_unit="kg CO?/tonne",
         facility_id="FAC001",
         reporting_period="2023"
     )
@@ -40,9 +40,9 @@ def cement_emission_record_invalid():
         id=uuid4(),
         indicator="Scope 1 GHG Emissions per tonne clinker",
         value=1500.0,  # Too high
-        unit="kg CO₂/tonne",
+        unit="kg CO?/tonne",
         original_value=1500.0,
-        original_unit="kg CO₂/tonne",
+        original_unit="kg CO?/tonne",
         facility_id="FAC001",
         reporting_period="2023"
     )
@@ -55,9 +55,9 @@ def steel_bfbof_record():
         id=uuid4(),
         indicator="Scope 1 GHG Emissions per tonne crude steel (BF-BOF)",
         value=2100.0,
-        unit="kg CO₂/tonne crude steel",
+        unit="kg CO?/tonne crude steel",
         original_value=2100.0,
-        original_unit="kg CO₂/tonne crude steel",
+        original_unit="kg CO?/tonne crude steel",
         facility_id="FAC002",
         reporting_period="2023"
     )
@@ -111,9 +111,9 @@ class TestValidationEngine:
             id=uuid4(),
             indicator="Scope 1 GHG Emissions per tonne clinker",
             value=500.0,  # Below minimum of 800
-            unit="kg CO₂/tonne",
+            unit="kg CO?/tonne",
             original_value=500.0,
-            original_unit="kg CO₂/tonne"
+            original_unit="kg CO?/tonne"
         )
         results = validation_engine.validate_record(record, "cement_industry")
         assert len(results) > 0
@@ -125,9 +125,9 @@ class TestValidationEngine:
             id=uuid4(),
             indicator="Scope 1 GHG Emissions per tonne clinker",
             value=1500.0,  # Above maximum of 1100
-            unit="kg CO₂/tonne",
+            unit="kg CO?/tonne",
             original_value=1500.0,
-            original_unit="kg CO₂/tonne"
+            original_unit="kg CO?/tonne"
         )
         results = validation_engine.validate_record(record, "cement_industry")
         assert len(results) > 0
@@ -253,9 +253,9 @@ class TestValidationEngine:
             id=uuid4(),
             indicator="Scope 1 GHG Emissions per tonne clinker",
             value=-100.0,  # Negative value
-            unit="kg CO₂/tonne",
+            unit="kg CO?/tonne",
             original_value=-100.0,
-            original_unit="kg CO₂/tonne"
+            original_unit="kg CO?/tonne"
         )
         # Should be caught by range check (min: 0)
         results = validation_engine.validate_record(record, "cross_industry")
@@ -537,12 +537,12 @@ class TestCementIndustryRules:
             id=uuid4(),
             indicator="Scope 1 GHG Emissions per tonne clinker",
             value=950.0,  # Within valid range 800-1100
-            unit="kg CO₂/tonne",
+            unit="kg CO?/tonne",
             original_value=950.0,
-            original_unit="kg CO₂/tonne"
+            original_unit="kg CO?/tonne"
         )
         results = validation_engine.validate_record(record, "cement_industry")
-        assert len(results) == 0, "950 kg CO₂/tonne should pass validation"
+        assert len(results) == 0, "950 kg CO?/tonne should pass validation"
     
     def test_cement_emission_range_too_high(self, validation_engine):
         """Test cement emission value too high - Prompt 31 Test #2"""
@@ -550,12 +550,12 @@ class TestCementIndustryRules:
             id=uuid4(),
             indicator="Scope 1 GHG Emissions per tonne clinker",
             value=1500.0,  # Above maximum of 1100
-            unit="kg CO₂/tonne",
+            unit="kg CO?/tonne",
             original_value=1500.0,
-            original_unit="kg CO₂/tonne"
+            original_unit="kg CO?/tonne"
         )
         results = validation_engine.validate_record(record, "cement_industry")
-        assert len(results) > 0, "1500 kg CO₂/tonne should fail validation"
+        assert len(results) > 0, "1500 kg CO?/tonne should fail validation"
         assert results[0].severity == "error"
         assert results[0].rule_name == "cement_emission_range"
         assert "above maximum" in results[0].message.lower()
@@ -566,12 +566,12 @@ class TestCementIndustryRules:
             id=uuid4(),
             indicator="Scope 1 GHG Emissions per tonne clinker",
             value=500.0,  # Below minimum of 800
-            unit="kg CO₂/tonne",
+            unit="kg CO?/tonne",
             original_value=500.0,
-            original_unit="kg CO₂/tonne"
+            original_unit="kg CO?/tonne"
         )
         results = validation_engine.validate_record(record, "cement_industry")
-        assert len(results) > 0, "500 kg CO₂/tonne should fail validation"
+        assert len(results) > 0, "500 kg CO?/tonne should fail validation"
         assert results[0].severity == "error"
         assert results[0].rule_name == "cement_emission_range"
         assert "below minimum" in results[0].message.lower()
@@ -586,12 +586,12 @@ class TestSteelIndustryRules:
             id=uuid4(),
             indicator="Scope 1 GHG Emissions per tonne crude steel (BF-BOF)",
             value=2200.0,  # Within range 1800-2500
-            unit="kg CO₂/tonne crude steel",
+            unit="kg CO?/tonne crude steel",
             original_value=2200.0,
-            original_unit="kg CO₂/tonne crude steel"
+            original_unit="kg CO?/tonne crude steel"
         )
         results = validation_engine.validate_record(record, "steel_industry")
-        assert len(results) == 0, "2200 kg CO₂/tonne should pass for BF-BOF"
+        assert len(results) == 0, "2200 kg CO?/tonne should pass for BF-BOF"
     
     def test_steel_eaf_range(self, validation_engine):
         """Test valid EAF steel emission value - Prompt 31 Test #5"""
@@ -599,12 +599,12 @@ class TestSteelIndustryRules:
             id=uuid4(),
             indicator="Scope 1 GHG Emissions per tonne crude steel (EAF)",
             value=500.0,  # Within range 400-600
-            unit="kg CO₂/tonne crude steel",
+            unit="kg CO?/tonne crude steel",
             original_value=500.0,
-            original_unit="kg CO₂/tonne crude steel"
+            original_unit="kg CO?/tonne crude steel"
         )
         results = validation_engine.validate_record(record, "steel_industry")
-        assert len(results) == 0, "500 kg CO₂/tonne should pass for EAF"
+        assert len(results) == 0, "500 kg CO?/tonne should pass for EAF"
 
 
 class TestOutlierDetectionComprehensive:
@@ -727,7 +727,7 @@ class TestCrossFieldIntegrationTests:
     def test_scope_totals_mismatch_exact(self, validation_engine):
         """Test scope totals mismatch - Prompt 31 Test #10"""
         # Input: S1=100, S2=50, S3=30, Total=200
-        # Expected: Error flagged (100+50+30=180 ≠ 200)
+        # Expected: Error flagged (100+50+30=180 � 200)
         result = validation_engine.validate_scope_totals(
             scope_1=100.0,
             scope_2=50.0,
@@ -735,7 +735,7 @@ class TestCrossFieldIntegrationTests:
             total=200.0,
             tolerance=0.02
         )
-        assert result is not None, "Should detect mismatch (180 ≠ 200)"
+        assert result is not None, "Should detect mismatch (180 � 200)"
         assert result.is_valid is False
         assert result.severity == "error"
         assert result.rule_name == "scope_totals_consistency"
@@ -775,9 +775,9 @@ def test_industry_emission_ranges(validation_engine, industry, indicator, value,
         id=uuid4(),
         indicator=indicator,
         value=value,
-        unit="kg CO₂/tonne",
+        unit="kg CO?/tonne",
         original_value=value,
-        original_unit="kg CO₂/tonne"
+        original_unit="kg CO?/tonne"
     )
     
     results = validation_engine.validate_record(record, industry)
@@ -846,27 +846,27 @@ class TestValidationIntegration:
                 id=uuid4(),
                 indicator="Scope 1 GHG Emissions per tonne clinker",
                 value=950.0,
-                unit="kg CO₂/tonne",
+                unit="kg CO?/tonne",
                 original_value=950.0,
-                original_unit="kg CO₂/tonne"
+                original_unit="kg CO?/tonne"
             ),
             # Invalid cement record (too high)
             NormalizedRecord(
                 id=uuid4(),
                 indicator="Scope 1 GHG Emissions per tonne clinker",
                 value=1500.0,
-                unit="kg CO₂/tonne",
+                unit="kg CO?/tonne",
                 original_value=1500.0,
-                original_unit="kg CO₂/tonne"
+                original_unit="kg CO?/tonne"
             ),
             # Invalid cement record (too low)
             NormalizedRecord(
                 id=uuid4(),
                 indicator="Scope 1 GHG Emissions per tonne clinker",
                 value=500.0,
-                unit="kg CO₂/tonne",
+                unit="kg CO?/tonne",
                 original_value=500.0,
-                original_unit="kg CO₂/tonne"
+                original_unit="kg CO?/tonne"
             ),
         ]
         
@@ -891,12 +891,12 @@ class TestValidationIntegration:
         # Create mixed dataset
         records = [
             NormalizedRecord(id=uuid4(), indicator="test", value=950.0, 
-                           unit="kg CO₂/tonne", original_value=950.0, original_unit="kg CO₂/tonne")
+                           unit="kg CO?/tonne", original_value=950.0, original_unit="kg CO?/tonne")
             for _ in range(8)  # 8 valid records
         ] + [
             NormalizedRecord(id=uuid4(), indicator="Scope 1 GHG Emissions per tonne clinker", 
-                           value=1500.0, unit="kg CO₂/tonne", 
-                           original_value=1500.0, original_unit="kg CO₂/tonne")
+                           value=1500.0, unit="kg CO?/tonne", 
+                           original_value=1500.0, original_unit="kg CO?/tonne")
             for _ in range(2)  # 2 invalid records
         ]
         
@@ -943,13 +943,16 @@ class TestValidationAPI:
             warning_breakdown={"test_warning": 5}
         )
         mock_get_service.return_value = mock_service
-        
-        client = TestClient(app)
-        response = client.post(
-            f"/api/v1/validation/process/{upload_id}",
-            params={"industry": "cement_industry"}
-        )
-        
+
+        from tests.auth_helpers import app_auth_patched
+
+        with app_auth_patched(app):
+            client = TestClient(app)
+            response = client.post(
+                f"/api/v1/validation/process/{upload_id}",
+                params={"industry": "cement_industry"}
+            )
+
         # Assert 200 response
         assert response.status_code == 200
         
@@ -979,28 +982,31 @@ class TestValidationAPI:
             []  # After review
         ]
         mock_get_service.return_value = mock_service
-        
-        client = TestClient(app)
-        
-        # Step 1: Get unreviewed errors (should have 1)
-        response = client.get(f"/api/v1/validation/unreviewed/{upload_id}")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["unreviewed_count"] == 1
-        
-        # Step 2: Mark error as reviewed
-        response = client.post(
-            "/api/v1/validation/review/mark-reviewed",
-            json={
-                "result_id": str(result_id),
-                "reviewer": "test@example.com",
-                "notes": "False positive"
-            }
-        )
-        assert response.status_code == 200
-        
-        # Step 3: Get unreviewed errors again (should be empty)
-        response = client.get(f"/api/v1/validation/unreviewed/{upload_id}")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["unreviewed_count"] == 0, "Error should disappear from unreviewed list"
+
+        from tests.auth_helpers import app_auth_patched
+
+        with app_auth_patched(app):
+            client = TestClient(app)
+
+            # Step 1: Get unreviewed errors (should have 1)
+            response = client.get(f"/api/v1/validation/unreviewed/{upload_id}")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["unreviewed_count"] == 1
+
+            # Step 2: Mark error as reviewed
+            response = client.post(
+                "/api/v1/validation/review/mark-reviewed",
+                json={
+                    "result_id": str(result_id),
+                    "reviewer": "test@example.com",
+                    "notes": "False positive"
+                }
+            )
+            assert response.status_code == 200
+
+            # Step 3: Get unreviewed errors again (should be empty)
+            response = client.get(f"/api/v1/validation/unreviewed/{upload_id}")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["unreviewed_count"] == 0, "Error should disappear from unreviewed list"

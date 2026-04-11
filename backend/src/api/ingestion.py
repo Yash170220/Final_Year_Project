@@ -12,10 +12,37 @@ from src.common.models import Upload, UploadStatus
 from src.common.schemas import UploadResponse, UploadDetailResponse, ErrorResponse
 from src.ingestion.service import IngestionService
 from src.ingestion.exceptions import ParseError, UnsupportedFileTypeError
+from src.api.auth import get_current_user
+from src.common.models import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingestion"])
+
+
+@router.get("/uploads")
+async def list_uploads(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List all uploads most recent first"""
+    uploads = db.query(Upload).order_by(
+        Upload.upload_time.desc()
+    ).limit(50).all()
+
+    return {
+        "uploads": [
+            {
+                "id": str(u.id),
+                "filename": u.filename,
+                "status": u.status.value if hasattr(u.status, 'value') else str(u.status),
+                "upload_time": u.upload_time.isoformat() if u.upload_time else "",
+                "facility_name": getattr(u, 'facility_name', '') or '',
+                "industry": getattr(u, 'industry', '') or '',
+            }
+            for u in uploads
+        ]
+    }
 
 
 @router.post(
@@ -34,7 +61,8 @@ router = APIRouter(prefix="/api/v1/ingest", tags=["ingestion"])
 async def upload_file(
     file: UploadFile = File(..., description="File to upload (.xlsx, .xls, .csv)"),
     facility_name: str = Form(..., description="Facility name"),
-    reporting_period: str = Form(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="Reporting period (YYYY-MM)"),
+    reporting_period: str = Form(None, description="Reporting period (YYYY-MM)"),
+    industry: str = Form(None, description="Industry sector"),
     db: Session = Depends(get_db)
 ):
     """Upload and ingest a file"""
@@ -60,7 +88,20 @@ async def upload_file(
 
     try:
         service = IngestionService(db)
-        result = service.ingest_file_from_upload(file, facility_name, reporting_period)
+
+        # Use reporting_period if provided, otherwise default to current month
+        period = reporting_period or "2024-01"
+
+        result = service.ingest_file_from_upload(file, facility_name, period)
+
+        # Save industry if field exists on model
+        if industry:
+            upload_record = db.query(Upload).filter(
+                Upload.id == result.upload_id
+            ).first()
+            if upload_record and hasattr(upload_record, 'industry'):
+                upload_record.industry = industry
+                db.commit()
 
         return UploadResponse(
             upload_id=result.upload_id,

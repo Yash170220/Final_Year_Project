@@ -1,8 +1,9 @@
 """AI ESG Reporting System - Main Application"""
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.common.database import init_db
+from src.api.auth import get_current_user, router as auth_router
 from src.api.ingestion import router as ingestion_router
 from src.api.matching import router as matching_router
 from src.api.normalization import router as normalization_router
@@ -31,15 +32,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(ingestion_router)
-app.include_router(matching_router)
-app.include_router(normalization_router)
-app.include_router(validation_router)
-app.include_router(generation_router)
-app.include_router(provenance_router)
-app.include_router(chat_router)
-app.include_router(dashboard_router)
+# Pipeline & dashboard: JWT required (see /api/v1/auth/* for tokens)
+_require_auth = [Depends(get_current_user)]
+
+app.include_router(ingestion_router, dependencies=_require_auth)
+app.include_router(matching_router, dependencies=_require_auth)
+app.include_router(normalization_router, dependencies=_require_auth)
+app.include_router(validation_router, dependencies=_require_auth)
+app.include_router(generation_router, dependencies=_require_auth)
+app.include_router(provenance_router, dependencies=_require_auth)
+app.include_router(chat_router, dependencies=_require_auth)
+app.include_router(dashboard_router, dependencies=_require_auth)
+app.include_router(auth_router)
+
 
 @app.get("/")
 async def root():
